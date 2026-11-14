@@ -154,7 +154,7 @@ private fun Analisis(a: AnalisisOjo) {
 @Composable
 private fun Anemia(a: AnalisisAnemia) {
     val color = when {
-        !a.valida -> Colores.atencion
+        !a.valida || a.resultado == "no_concluyente" -> Colores.atencion
         a.resultado == "palidez" -> Colores.mal
         else -> Colores.bien
     }
@@ -162,8 +162,12 @@ private fun Anemia(a: AnalisisAnemia) {
     if (a.descripcion.isNotBlank()) Text(a.descripcion, style = MaterialTheme.typography.bodyMedium)
     val p = a.probabilidad
     if (a.valida && p != null) {
-        Barra("Probabilidad de anemia", p.toFloat(), if (a.resultado == "palidez") Colores.mal else Colores.bien)
-        a.umbral?.let {
+        Barra("Probabilidad de anemia", p.toFloat(), color)
+        val zona = a.zonaGris
+        if (zona != null && zona.size == 2) {
+            Text("Resultado claro solo por debajo de ${(zona[0] * 100).roundToInt()} % o desde " +
+                "${(zona[1] * 100).roundToInt()} %; en medio no se da veredicto.", style = MaterialTheme.typography.bodySmall)
+        } else a.umbral?.let {
             Text("Se marca anemia a partir de ${(it * 100).roundToInt()} %.", style = MaterialTheme.typography.bodySmall)
         }
     }
@@ -173,6 +177,7 @@ private fun Anemia(a: AnalisisAnemia) {
             v.sensibilidad?.let { "detecta ${(it * 100).roundToInt()} % de las anemias" },
             v.especificidad?.let { "${(it * 100).roundToInt()} % de aciertos en personas sin anemia" },
             v.n?.let { "probado con $it fotos" },
+            v.cobertura?.let { "${(it * 100).roundToInt()} % de las fotos dan resultado claro" },
         )
         if (partes.isNotEmpty()) {
             Text("Fiabilidad: " + partes.joinToString(", ") + ".", style = MaterialTheme.typography.bodySmall)

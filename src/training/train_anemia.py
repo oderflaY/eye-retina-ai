@@ -35,6 +35,10 @@ from src.config import PROJECT_ROOT
 from src.deployment.inference_anemia import CARACTERISTICAS, SegmentadorConjuntiva, extraer
 
 SENS_OBJETIVO = 0.80
+# Zona gris: entre estas probabilidades no se da veredicto ("no concluyente, repite la foto").
+# Elegida con las predicciones fuera de partición: los errores en los resultados que sí se dan bajan
+# de ~23 % a ~15 % a cambio de pedir repetir ~4 de cada 10 fotos.
+ZONA_GRIS = (0.30, 0.70)
 
 
 def leer_datos(raiz: Path) -> pd.DataFrame:
@@ -105,6 +109,18 @@ def umbral_sensible(y: np.ndarray, p: np.ndarray, sens: float = SENS_OBJETIVO) -
             "exactitud": round(float((pred == y).mean()), 4)}
 
 
+def con_zona_gris(y: np.ndarray, p: np.ndarray, zona: tuple[float, float] = ZONA_GRIS) -> dict:
+    """Desempeño contando solo las fotos con veredicto (fuera de la zona gris)."""
+    bajo, alto = zona
+    pos, neg = p >= alto, p < bajo
+    dado = pos | neg
+    return {"zona_gris": [bajo, alto], "cobertura": round(float(dado.mean()), 4),
+            "sensibilidad": round(float(pos[(y == 1) & dado].mean()), 4),
+            "especificidad": round(float(neg[(y == 0) & dado].mean()), 4),
+            "exactitud": round(float(((pos & (y == 1)) | (neg & (y == 0)))[dado].mean()), 4),
+            "vpp": round(float((y[pos] == 1).mean()), 4), "vpn": round(float((y[neg] == 0).mean()), 4)}
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--datos", type=Path, default=Path.home() / "TemrariosSpace/datasets/Anemia/eyes")
@@ -138,9 +154,13 @@ def main() -> None:
     gana = max(res, key=lambda k: res[k]["auc_cv"])
     final = candidatos()[gana].fit(X, y)
     val = {k: v for k, v in res[gana].items() if not k.startswith("_")}
+    gris = con_zona_gris(y, res[gana]["_oof"])
+    print("con zona gris:", gris)
+    val["sin_zona_gris"] = {k: val.pop(k) for k in ("sensibilidad", "especificidad", "exactitud")}
+    val.update(gris)
     val.update(modelo=gana, n=int(len(y)), n_anemia=int(y.sum()), datos="Eyes-defy-anemia (Dimauro 2022)",
                metodo="validación cruzada estratificada 10×5")
-    joblib.dump({"modelo": final, "umbral": val["umbral"], "caracteristicas": list(CARACTERISTICAS),
+    joblib.dump({"modelo": final, "umbral": val["umbral"], "zona_gris": list(ZONA_GRIS), "caracteristicas": list(CARACTERISTICAS),
                  "validacion": val}, a.salida / "clasificador.joblib")
     reporte = {"ganador": gana, "validacion": val,
                "comparacion": {k: {kk: vv for kk, vv in v.items() if not kk.startswith("_")} for k, v in res.items()},

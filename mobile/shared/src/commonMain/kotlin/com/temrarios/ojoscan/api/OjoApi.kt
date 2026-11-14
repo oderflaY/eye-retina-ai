@@ -50,6 +50,8 @@ data class ValidacionAnemia(
     val sensibilidad: Double? = null,
     val especificidad: Double? = null,
     val n: Int? = null,
+    /** Fracción de fotos que reciben veredicto (fuera de la zona gris). */
+    val cobertura: Double? = null,
 )
 
 /** Respuesta de POST /predict/anemia. */
@@ -61,6 +63,8 @@ data class AnalisisAnemia(
     val descripcion: String = "",
     @SerialName("probabilidad_anemia") val probabilidad: Double? = null,
     val umbral: Double? = null,
+    /** [bajo, alto]: entre estas probabilidades el resultado es «no concluyente». */
+    @SerialName("zona_gris") val zonaGris: List<Double>? = null,
     @SerialName("fraccion_conjuntiva") val fraccionConjuntiva: Double = 0.0,
     @SerialName("advertencia_luz") val advertenciaLuz: String? = null,
     val validacion: ValidacionAnemia? = null,

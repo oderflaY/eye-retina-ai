@@ -152,6 +152,7 @@ class AnalizadorAnemia:
         paquete = joblib.load(clf_path)
         self.clf = paquete["modelo"]
         self.umbral = float(paquete["umbral"])
+        self.zona = tuple(paquete.get("zona_gris", (self.umbral, self.umbral)))
         self.cv = paquete.get("validacion", {})
         self.nombre = Path(clf_path).parent.name
 
@@ -167,19 +168,30 @@ class AnalizadorAnemia:
                                    "para que se vea bien la parte rosada de adentro."}
         x = np.array([[e["medidas"][k] for k in CARACTERISTICAS]])
         p = float(self.clf.predict_proba(x)[0, 1])
-        palido = p >= self.umbral
+        bajo, alto = self.zona
         sin_ref = e["pixeles_blanco"] < 150
+        if p >= alto:
+            resultado, titulo, desc = "palidez", "Conjuntiva pálida: posible anemia", (
+                "El interior del párpado se ve más pálido de lo normal. Conviene hacer una biometría "
+                "hemática para medir la hemoglobina.")
+        elif p < bajo:
+            resultado, titulo, desc = "sin_palidez", "Color de conjuntiva normal", (
+                "El interior del párpado tiene buena coloración; no se ven signos de anemia.")
+        else:
+            # Zona gris: aquí el modelo se equivoca casi la mitad de las veces; mejor no adivinar.
+            resultado, titulo, desc = "no_concluyente", "Resultado no concluyente", (
+                "El color quedó en un punto intermedio y no se puede decir con confianza. Repite la foto "
+                "con luz blanca de día, sin flash, jalando bien el párpado. Si vuelve a salir así, "
+                "hazte una biometría hemática.")
         res = {
             **base,
             "valida": True,
-            "resultado": "palidez" if palido else "sin_palidez",
+            "resultado": resultado,
             "probabilidad_anemia": round(p, 4),
             "umbral": round(self.umbral, 4),
-            "titulo": "Conjuntiva pálida: posible anemia" if palido else "Color de conjuntiva normal",
-            "descripcion": (
-                "El interior del párpado se ve más pálido de lo normal. Conviene hacer una biometría "
-                "hemática para medir la hemoglobina." if palido else
-                "El interior del párpado tiene buena coloración; no se ven signos de anemia."),
+            "zona_gris": [round(bajo, 4), round(alto, 4)],
+            "titulo": titulo,
+            "descripcion": desc,
             "medidas": {k: round(v, 4) for k, v in e["medidas"].items()},
             "balance_blancos": not sin_ref,
             "validacion": self.cv,
