@@ -1,5 +1,12 @@
 package com.temrarios.ojoscan
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.togetherWith
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -36,7 +43,14 @@ fun App(servidorPorDefecto: String) {
     var pantalla by remember { mutableStateOf<Pantalla>(Pantalla.Inicio) }
 
     TemaOjo {
-        when (val p = pantalla) {
+        AnimatedContent(
+            pantalla,
+            transitionSpec = {
+                (fadeIn(tween(450)) + scaleIn(tween(450), initialScale = 0.94f)) togetherWith
+                    (fadeOut(tween(250)) + scaleOut(tween(250), targetScale = 1.04f))
+            },
+        ) { p ->
+        when (p) {
             Pantalla.Inicio -> PantallaInicio(
                 ajustes = ajustes,
                 alCambiar = { ajustes = it },
@@ -53,6 +67,7 @@ fun App(servidorPorDefecto: String) {
                 alRepetir = { pantalla = Pantalla.Escaner },
                 alInicio = { pantalla = Pantalla.Inicio },
             )
+        }
         }
     }
 }
