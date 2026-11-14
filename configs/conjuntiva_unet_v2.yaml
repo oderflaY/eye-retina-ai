@@ -1,0 +1,37 @@
+# U-Net de la conjuntiva palpebral (Anemia-seg) → base para medir palidez / anemia
+# Antes: python -m src.data.prepare_conjuntiva
+experiment: conjuntiva_unet_resnet50_v2
+seed: 42
+
+data:
+  processed_dir: data/processed/conjuntiva
+  crop: 320                    # 384 se quedaba sin VRAM al descongelar el encoder
+  crops_per_image: 2           # recortes por imagen y época
+  color_aug: 0.15
+
+model:
+  encoder: resnet50            # resnet50 | efficientnetb4 | plain
+  weights: imagenet            # imagenet | null
+  dropout: 0.1
+
+train:
+  batch_size: 4                # con 8 se acaba la VRAM (6 GB) al descongelar el encoder
+  val_batch_size: 4
+  epochs: 60
+  warmup_epochs: 3             # encoder congelado
+  lr: 1.0e-3
+  finetune_lr: 2.0e-4
+  loss: {bce_weight: 1.0, dice_weight: 1.0}
+  early_stopping_patience: 12
+  reduce_lr: {factor: 0.5, patience: 3, min_lr: 1.0e-6}
+  mixed_precision: true
+  steps_per_epoch: null        # null = todo el dataset; un número limita (pruebas)
+
+evaluation:
+  tta: true                    # promedio con el volteo horizontal
+  max_figures: 12
+
+output:
+  dir: models/conjuntiva_v2
+  log_dir: logs/conjuntiva_v2
+  report_dir: reports/conjuntiva_v2

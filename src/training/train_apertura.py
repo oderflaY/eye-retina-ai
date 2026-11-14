@@ -78,10 +78,10 @@ def dataset(d: pd.DataFrame, lote: int, entrenar: bool, peso_cerrado: float) -> 
     return ds.map(leer, num_parallel_calls=4).batch(lote).prefetch(2)
 
 
-def modelo() -> tf.keras.Model:
+def modelo(alpha: float = 0.5) -> tf.keras.Model:
     ent = tf.keras.Input((LADO, LADO, 3), name="imagen")
     x = tf.keras.layers.Rescaling(2.0, offset=-1.0)(ent)  # MobileNetV2 espera [-1, 1]
-    base = tf.keras.applications.MobileNetV2((LADO, LADO, 3), alpha=0.5, include_top=False, weights="imagenet")
+    base = tf.keras.applications.MobileNetV2((LADO, LADO, 3), alpha=alpha, include_top=False, weights="imagenet")
     x = base(x)
     x = tf.keras.layers.GlobalAveragePooling2D()(x)
     x = tf.keras.layers.Dropout(0.2)(x)
@@ -98,6 +98,8 @@ def main() -> None:
     ap.add_argument("--reporte", type=Path, default=PROJECT_ROOT / "reports/apertura")
     ap.add_argument("--epocas", type=int, default=25)
     ap.add_argument("--lote", type=int, default=64)
+    ap.add_argument("--alpha", type=float, default=0.5)
+    ap.add_argument("--paciencia", type=int, default=6)
     a = ap.parse_args()
     a.salida.mkdir(parents=True, exist_ok=True)
     a.reporte.mkdir(parents=True, exist_ok=True)
@@ -108,7 +110,7 @@ def main() -> None:
     peso = float((tr.cerrado == 0).sum() / max((tr.cerrado == 1).sum(), 1)) ** 0.5
     print(f"train {len(tr)} ({int(tr.cerrado.sum())} cerrados) · val {len(va)} · test {len(te)} · peso cerrado {peso:.1f}")
 
-    m = modelo()
+    m = modelo(a.alpha)
     perdidas = {"apertura": tf.keras.losses.Huber(delta=0.05), "cerrado": "binary_crossentropy"}
     pesos_p = {"apertura": 20.0, "cerrado": 1.0}
     ds_tr = dataset(tr, a.lote, True, peso)
@@ -125,8 +127,8 @@ def main() -> None:
               metrics={"cerrado": [tf.keras.metrics.AUC(name="auc")], "apertura": ["mae"]})
     m.fit(ds_tr, validation_data=ds_va, epochs=a.epocas, verbose=2, callbacks=[
         tf.keras.callbacks.ModelCheckpoint(str(mejor), monitor="val_loss", save_best_only=True),
-        tf.keras.callbacks.EarlyStopping(monitor="val_loss", patience=6, restore_best_weights=True),
-        tf.keras.callbacks.ReduceLROnPlateau(monitor="val_loss", factor=0.5, patience=2, min_lr=1e-6),
+        tf.keras.callbacks.EarlyStopping(monitor="val_loss", patience=a.paciencia, restore_best_weights=True),
+        tf.keras.callbacks.ReduceLROnPlateau(monitor="val_loss", factor=0.5, patience=max(2, a.paciencia // 3), min_lr=1e-6),
     ])
 
     # Evaluación en las caras de prueba
