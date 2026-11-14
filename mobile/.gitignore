@@ -1,0 +1,9 @@
+.gradle/
+build/
+local.properties
+keystore.properties
+*.jks
+.kotlin/
+iosApp/Configuration/Secrets.xcconfig
+xcuserdata/
+dist/

@@ -1,0 +1,26 @@
+# Núcleo
+tensorflow[and-cuda]>=2.15 ; sys_platform == "linux"
+tensorflow>=2.15 ; sys_platform != "linux"
+numpy
+pandas
+scikit-learn
+opencv-python-headless
+matplotlib
+seaborn
+albumentations>=1.4
+pyyaml
+python-dotenv
+tensorboard
+# Despliegue
+fastapi
+uvicorn[standard]
+python-multipart
+# Desarrollo
+pytest
+httpx2            # cliente de pruebas de FastAPI
+black
+flake8
+# Opcionales (descomentar según se necesiten)
+# wandb            # tracking de experimentos
+gradio           # demo interactiva (src/deployment/demo.py)
+# jupyter          # notebooks de EDA

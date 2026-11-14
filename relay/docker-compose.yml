@@ -1,0 +1,15 @@
+# Intermediario OjoScan en el VPS. Caddy (saludmas-proxy) publica https://2.25.68.28:13443 → ojoscan-relay:8000
+services:
+  relay:
+    build: .
+    container_name: ojoscan-relay
+    restart: unless-stopped
+    env_file: .env          # RELAY_TOKEN=...
+    volumes:
+      - ./datos:/data
+    networks: [rutacree_edge]
+    mem_limit: 256m
+
+networks:
+  rutacree_edge:
+    external: true

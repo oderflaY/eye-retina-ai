@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Ojo blanco con iris turquesa, dentro de la zona segura (66 dp) del ícono adaptable. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp"
+    android:viewportWidth="108" android:viewportHeight="108">
+    <path android:fillColor="#FFFFFF"
+        android:pathData="M24,54 C34,38 44,32 54,32 C64,32 74,38 84,54 C74,70 64,76 54,76 C44,76 34,70 24,54 Z" />
+    <path android:fillColor="#0B5E5E"
+        android:pathData="M54,41 a13,13 0 1,0 0.01,0 Z" />
+    <path android:fillColor="#5FD3CF"
+        android:pathData="M54,45 a9,9 0 1,0 0.01,0 Z" />
+    <path android:fillColor="#08302F"
+        android:pathData="M54,49 a5,5 0 1,0 0.01,0 Z" />
+    <path android:fillColor="#FFFFFF"
+        android:pathData="M58,47 a2.2,2.2 0 1,0 0.01,0 Z" />
+</vector>

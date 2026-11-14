@@ -1,0 +1,17 @@
+.venv/
+__pycache__/
+*.pyc
+data/raw/
+data/processed/
+data/augmented/
+data/synthetic/
+models/
+logs/
+reports/*/
+!reports/.gitkeep
+wandb/
+.ipynb_checkpoints/
+
+# capturas reales de personas (datos biométricos): nunca al repo
+data/captures/
+*.apk

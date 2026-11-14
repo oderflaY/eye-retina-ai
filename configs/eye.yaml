@@ -1,0 +1,43 @@
+# Detector de ojos (regresión directa: bbox + 6 landmarks + ojo/no-ojo)
+experiment: eye_mobilenetv2_224
+seed: 42
+
+data:
+  data_dir: data/raw/eyes        # relativo a la raíz del proyecto
+  label_format: auto             # auto | csv | coco | yolo | voc | folders
+  img_size: [224, 224]
+  test_size: 0.15
+  val_size: 0.15
+  crop_scale: 2.5                # recorte por ojo en imágenes con varios ojos
+  cache: true
+
+augmentation:
+  enabled: true
+  rotate_limit: 15
+  hflip_p: 0.5
+  brightness_contrast: 0.2
+  translate: 0.05
+  zoom: 0.10
+
+model:
+  weights: imagenet              # imagenet | null
+  num_landmarks: 6
+
+train:
+  batch_size: 32                 # baja a 16 si la GPU tiene < 6 GB libres
+  epochs: 50
+  warmup_epochs: 5               # backbone congelado; 0 = entrenar todo desde el inicio
+  unfreeze_last: 50              # capas del backbone a descongelar tras el calentamiento
+  lr: 1.0e-3                     # LR de la etapa de calentamiento
+  finetune_lr: 1.0e-4            # LR de fine-tuning (compile_eye_detector usa 1e-4 por defecto)
+  loss_weights: {bbox: 1.0, landmarks: 0.5, eye_prob: 1.0}
+  early_stopping_patience: 10
+  reduce_lr: {factor: 0.5, patience: 5, min_lr: 1.0e-6}
+  mixed_precision: true          # solo si hay GPU
+
+output:
+  checkpoint: models/eye_best.h5
+  savedmodel_dir: models/eye_savedmodel
+  log_dir: logs/eye
+  report: reports/eye_results.json
+  figures_dir: reports/eye

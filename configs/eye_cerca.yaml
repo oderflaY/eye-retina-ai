@@ -1,0 +1,48 @@
+# Detector de ojo DE CERCA para la app (como el detector de caras, pero del ojo):
+# recortes de FFHQ desde "solo el ojo" hasta "ojo con media cara", con pupila, iris, esquinas
+# y párpados, + negativos (cejas, nariz, boca, mejillas) para que diga "no hay ojo".
+# Datos: python src/data/etiquetar_ffhq.py --tars data/raw/ffhq_listos --out data/raw/eyes_cerca
+experiment: eye_cerca_mobilenetv2_224
+seed: 42
+
+data:
+  data_dir: data/raw/eyes_cerca_v2
+  label_format: csv
+  img_size: [224, 224]
+  test_size: 0.1
+  val_size: 0.1
+  crop_scale: 1.0                # los recortes ya vienen hechos (1 ojo por imagen)
+  group_prefix: true             # los 4 recortes de una cara caen en el mismo subconjunto
+  cache: false
+
+augmentation:
+  enabled: true
+  rotate_limit: 20               # teléfono algo girado
+  hflip_p: 0.0                  # esquinas por posición en la imagen: un flip las cambiaría de lado (ya vienen ambos ojos)
+  brightness_contrast: 0.3       # luz de interior / flash
+  translate: 0.05
+  zoom: 0.10
+
+model:
+  weights: imagenet
+  num_landmarks: 6
+
+train:
+  batch_size: 48
+  epochs: 40
+  warmup_epochs: 3
+  unfreeze_last: 80
+  lr: 1.0e-3
+  finetune_lr: 2.0e-4
+  loss_weights: {bbox: 1.0, landmarks: 1.0, eye_prob: 1.0}
+  early_stopping_patience: 8
+  reduce_lr: {factor: 0.5, patience: 3, min_lr: 1.0e-6}
+  mixed_precision: true
+  jit_compile: true             # XLA
+
+output:
+  checkpoint: models/eye_cerca/best.h5
+  savedmodel_dir: models/eye_cerca/savedmodel
+  log_dir: logs/eye_cerca
+  report: reports/eye_cerca/results.json
+  figures_dir: reports/eye_cerca

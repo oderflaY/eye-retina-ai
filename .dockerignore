@@ -1,0 +1,6 @@
+.venv
+data
+logs
+reports
+wandb
+**/__pycache__

@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- El servidor de pruebas corre en la laptop por la Wi-Fi (http). Para publicar, usar HTTPS
+     y quitar cleartextTrafficPermitted. -->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true" />
+</network-security-config>

@@ -1,0 +1,14 @@
+// Apple Developer Team ID (10 caracteres). Mejor ponlo en Secrets.xcconfig para no subirlo a git.
+TEAM_ID=
+
+PRODUCT_NAME=OjoScan
+PRODUCT_BUNDLE_IDENTIFIER=com.temrarios.ojoscan
+
+CURRENT_PROJECT_VERSION=1
+MARKETING_VERSION=1.0
+
+// Servidor de Eye-Retina AI. Para pruebas, el de tu computadora en la misma Wi-Fi.
+API_BASE_URL = https:/$()/2.25.68.28:13443
+
+// Copia Secrets.xcconfig.example a Secrets.xcconfig (no se sube a git) para cambiar lo de arriba.
+#include? "Secrets.xcconfig"
