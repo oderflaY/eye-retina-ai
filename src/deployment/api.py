@@ -189,6 +189,29 @@ async def read_upload(file: UploadFile) -> Any:
 # Endpoints
 # --------------------------------------------------------------------------- #
 @lru_cache(maxsize=1)
+def get_rostro_analyzer() -> Any:
+    """Rostro (parálisis facial, ictericia) + ojos de la misma foto. Necesita servicio_rostro en :8001."""
+    from src.deployment.inference_rostro import AnalizadorRostro
+
+    carpeta = _model_path("ROSTRO_MODEL_DIR", "models/rostro")
+    for n in ("paralisis.joblib", "ictericia.joblib"):
+        if not (carpeta / n).exists():
+            raise HTTPException(503, f"Modelo de rostro no disponible ({n}).")
+    return AnalizadorRostro(carpeta, analizador_ojo=get_eye_analyzer)
+
+
+@lru_cache(maxsize=1)
+def get_palma_analyzer() -> Any:
+    """Palidez de la palma de la mano. Necesita servicio_rostro (manos) en :8001."""
+    from src.deployment.inference_palma import AnalizadorPalma
+
+    ruta = _model_path("PALMA_MODEL_PATH", "models/palma/clasificador.joblib")
+    if not ruta.exists():
+        raise HTTPException(503, "Modelo de palma no disponible. Entrénalo con train_anemia_palma.py.")
+    return AnalizadorPalma(ruta)
+
+
+@lru_cache(maxsize=1)
 def get_anemia_analyzer() -> Any:
     """Palidez de conjuntiva: U-Net de conjuntiva + clasificador de color."""
     from src.deployment.inference_anemia import AnalizadorAnemia
@@ -199,6 +222,29 @@ def get_anemia_analyzer() -> Any:
         if not p.exists():
             raise HTTPException(503, f"Modelo de anemia no disponible ({p.name}). Entrénalo con train_anemia.py.")
     return AnalizadorAnemia(seg, clf)
+
+
+@lru_cache(maxsize=1)
+def get_encia_analyzer() -> Any:
+    """Palidez de la encía (experimental). Necesita servicio_rostro (boca) en :8001."""
+    from src.deployment.inference_encia import AnalizadorEncia
+
+    dientes = _model_path("DIENTES_MODEL_DIR", "models/dientes")
+    ref = _model_path("ENCIA_REFERENCIA", "models/encia/referencia.json")
+    if not (dientes / "best.keras").exists() or not ref.exists():
+        raise HTTPException(503, "Modelo no disponible: encía. Entrena train_dientes y referencia_encias.")
+    return AnalizadorEncia(dientes, ref)
+
+
+@lru_cache(maxsize=1)
+def get_perfil_analyzer() -> Any:
+    """Perfil médico con los datos que escribe el paciente (modelos de ~/Deep_Learning)."""
+    from src.deployment.inference_perfil import AnalizadorPerfil
+
+    carpeta = _model_path("PERFIL_MODEL_DIR", "models/perfil")
+    if not (carpeta / "resultados.json").exists():
+        raise HTTPException(503, "Modelo no disponible: perfil. Entrénalo con python -m src.training.train_perfil.")
+    return AnalizadorPerfil(carpeta)
 
 
 @app.get("/")
@@ -217,6 +263,10 @@ def health() -> dict[str, Any]:
             "retina": {"path": retina.name, "available": retina.exists()},
             "eye_analysis": {"path": analisis.name, "available": analisis.exists()},
             "anemia": {"path": anemia.name, "available": anemia.exists() and conj.exists()},
+            "encia": {"path": "dientes+referencia", "available": (_model_path("DIENTES_MODEL_DIR", "models/dientes") / "best.keras").exists()
+                      and _model_path("ENCIA_REFERENCIA", "models/encia/referencia.json").exists()},
+            "perfil": {"path": "perfil", "available": (_model_path("PERFIL_MODEL_DIR", "models/perfil") / "resultados.json").exists()},
+            "corazon": {"path": "corazon", "available": (PROJECT_ROOT / "models/corazon/fa.joblib").exists()},
         },
     }
 
@@ -246,6 +296,13 @@ async def predict_eye_analysis(file: UploadFile = File(..., description="foto de
     return get_eye_analyzer().predict(image)
 
 
+@app.post("/predict/rostro", responses={400: {"model": ErrorBody}, 503: {"model": ErrorBody}})
+async def predict_rostro(file: UploadFile = File(..., description="foto de frente de toda la cara")) -> dict[str, Any]:
+    """Asimetría facial (parálisis) e ictericia, cruzadas con el análisis de los ojos de la misma foto."""
+    image = await read_upload(file)
+    return get_rostro_analyzer().predict(image)
+
+
 @app.post("/predict/anemia", responses={400: {"model": ErrorBody}, 503: {"model": ErrorBody}})
 async def predict_anemia(
     file: UploadFile = File(..., description="foto del ojo con el párpado inferior jalado hacia abajo"),
@@ -253,6 +310,61 @@ async def predict_anemia(
     """Tamizaje de anemia por palidez de la conjuntiva palpebral."""
     image = await read_upload(file)
     return get_anemia_analyzer().predict(image)
+
+
+@app.post("/predict/palma", responses={400: {"model": ErrorBody}, 503: {"model": ErrorBody}})
+async def predict_palma(
+    file: UploadFile = File(..., description="foto de la palma de la mano abierta"),
+) -> dict[str, Any]:
+    """Tamizaje de anemia por palidez de la palma (misma respuesta que /predict/anemia)."""
+    image = await read_upload(file)
+    return get_palma_analyzer().predict(image)
+
+
+@app.post("/predict/encia", responses={400: {"model": ErrorBody}, 503: {"model": ErrorBody}})
+async def predict_encia(file: UploadFile = File(..., description="foto de frente sonriendo con la encía de arriba visible")) -> dict[str, Any]:
+    """Anemia por palidez de la encía (EXPERIMENTAL, sin validar con hemoglobina). Misma forma que /predict/anemia."""
+    datos = await file.read()
+    try:
+        image = decode_image_bytes(datos)
+    except ValueError:
+        raise HTTPException(400, "El archivo no es una imagen válida")
+    return get_encia_analyzer().predict(datos, image)
+
+
+@app.post("/predict/perfil", responses={400: {"model": ErrorBody}, 503: {"model": ErrorBody}})
+async def predict_perfil(file: UploadFile = File(..., description="datos.json con edad, medidas, presión, síntomas")) -> dict[str, Any]:
+    """Perfil médico. Los datos llegan como archivo JSON para pasar por el intermediario del VPS."""
+    import json
+
+    try:
+        datos = json.loads((await file.read()).decode("utf-8"))
+        assert isinstance(datos, dict)
+    except Exception:
+        raise HTTPException(400, "datos.json no es un objeto JSON válido")
+    return get_perfil_analyzer().predict(datos)
+
+
+@lru_cache(maxsize=1)
+def get_corazon_analyzer() -> Any:
+    from src.deployment.inference_corazon import AnalizadorCorazon
+    carpeta = PROJECT_ROOT / "models/corazon"
+    if not (carpeta / "fa.joblib").exists():
+        raise HTTPException(503, "Modelo cardiaco no disponible: corre src/training/train_corazon.py")
+    return AnalizadorCorazon(carpeta)
+
+
+@app.post("/predict/corazon", responses={400: {"model": ErrorBody}, 503: {"model": ErrorBody}})
+async def predict_corazon(file: UploadFile = File(..., description="corazon.json: serie de pulso a 1 Hz, historial, edad, síntomas")) -> dict[str, Any]:
+    """Vigilancia cardiaca con la pulsera: IA de ritmo + comparación con tu historial + alertas de prevención."""
+    import json
+
+    try:
+        datos = json.loads((await file.read()).decode("utf-8"))
+        assert isinstance(datos, dict)
+    except Exception:
+        raise HTTPException(400, "corazon.json no es un objeto JSON válido")
+    return get_corazon_analyzer().predict(datos)
 
 
 @app.post("/predict/eyes")

@@ -18,8 +18,11 @@ exifinterface = "1.4.1"
 # Detección de rostro/ojos en el teléfono (modelo incluido en el APK, funciona sin internet).
 mlkitFace = "16.1.7"
 litert = "1.4.2"
+# Historial de la pulsera (Mi Fitness → Health Connect).
+healthConnect = "1.1.0"
 
 [libraries]
+health-connect = { module = "androidx.health.connect:connect-client", version.ref = "healthConnect" }
 litert = { module = "com.google.ai.edge.litert:litert", version.ref = "litert" }
 kotlin-test = { module = "org.jetbrains.kotlin:kotlin-test", version.ref = "kotlin" }
 androidx-core-ktx = { module = "androidx.core:core-ktx", version.ref = "androidx-core" }

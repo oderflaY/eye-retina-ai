@@ -32,6 +32,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Bloodtype
+import androidx.compose.material.icons.filled.Face
+import androidx.compose.material.icons.filled.PanTool
 import androidx.compose.material.icons.filled.RemoveRedEye
 import androidx.compose.material3.Icon
 import androidx.compose.material3.OutlinedTextField
@@ -71,7 +73,7 @@ import kotlin.math.sin
 private enum class Enlace { SIN_PROBAR, PROBANDO, OK, PC_APAGADA, FALLO }
 
 @Composable
-fun PantallaInicio(ajustes: Ajustes, alCambiar: (Ajustes) -> Unit, alEscanear: () -> Unit) {
+fun PantallaInicio(alVolver: () -> Unit, ajustes: Ajustes, alCambiar: (Ajustes) -> Unit, alEscanear: () -> Unit) {
     val alcance = rememberCoroutineScope()
     var enlace by remember { mutableStateOf(Enlace.SIN_PROBAR) }
     var detalleEnlace by remember { mutableStateOf<String?>(null) }
@@ -100,6 +102,7 @@ fun PantallaInicio(ajustes: Ajustes, alCambiar: (Ajustes) -> Unit, alEscanear: (
         }
     }
 
+    val sinObjetivo = ajustes.completo || ajustes.modo.fotoLibre
     FondoEspacial {
         Column(
             Modifier.safeDrawingPadding().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 12.dp),
@@ -108,7 +111,9 @@ fun PantallaInicio(ajustes: Ajustes, alCambiar: (Ajustes) -> Unit, alEscanear: (
             // ── Encabezado ─────────────────────────────────────────────
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
-                    Text("EYE-RETINA AI // v3", style = Hud.etiqueta.copy(color = Colores.textoSuave, fontSize = 10.sp))
+                    Text("◂ ASTROPULSE", style = Hud.etiqueta.copy(fontSize = 11.sp),
+                        modifier = Modifier.clickable(onClick = alVolver).padding(vertical = 6.dp))
+                    Text("ESCANEOS COMPLEMENTARIOS", style = Hud.etiqueta.copy(color = Colores.textoSuave, fontSize = 10.sp))
                     TextoDegradado("OjoScan", 40)
                 }
                 EstadoEnlace(enlace) { probar() }
@@ -119,8 +124,14 @@ fun PantallaInicio(ajustes: Ajustes, alCambiar: (Ajustes) -> Unit, alEscanear: (
                 IrisHolografico(ajustes.modo, Modifier.size(240.dp))
             }
             Text(
-                if (ajustes.modo == Modo.OJO) "Visión computacional que analiza tu ojo en segundos."
-                else "Tamizaje de anemia por el color del párpado interno.",
+                if (ajustes.completo) "Todas las mediciones seguidas y un perfil médico que las combina."
+                else when (ajustes.modo) {
+                    Modo.OJO -> "Visión computacional que analiza tu ojo en segundos."
+                    Modo.ANEMIA -> "Tamizaje de anemia por el color del párpado interno."
+                    Modo.ROSTRO -> "Tu cara completa: asimetría facial, ojos amarillos y tus dos ojos a la vez."
+                    Modo.PALMA -> "Tamizaje de anemia por el color de la palma de tu mano."
+                    Modo.ENCIA -> "Tamizaje experimental de anemia por el color de tu encía."
+                },
                 color = Colores.textoSuave, fontSize = 14.sp, modifier = Modifier.fillMaxWidth(),
                 textAlign = androidx.compose.ui.text.style.TextAlign.Center,
             )
@@ -128,23 +139,33 @@ fun PantallaInicio(ajustes: Ajustes, alCambiar: (Ajustes) -> Unit, alEscanear: (
             // ── Protocolo ──────────────────────────────────────────────
             PanelVidrio(Modifier.fillMaxWidth()) {
                 TituloHud("01", "Protocolo de escaneo")
-                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    TarjetaModo(Modo.OJO, Icons.Filled.RemoveRedEye, ajustes.modo == Modo.OJO, Modifier.weight(1f)) {
-                        alCambiar(ajustes.copy(modo = Modo.OJO))
-                    }
-                    TarjetaModo(Modo.ANEMIA, Icons.Filled.Bloodtype, ajustes.modo == Modo.ANEMIA, Modifier.weight(1f)) {
-                        alCambiar(ajustes.copy(modo = Modo.ANEMIA))
+                TarjetaCompleto(ajustes.completo) { alCambiar(ajustes.copy(completo = true)) }
+                Text("O UNA MEDICIÓN SUELTA", style = Hud.etiqueta.copy(fontSize = 9.sp, color = Colores.textoSuave))
+                for (fila in Modo.entries.chunked(2)) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        for (m in fila) {
+                            TarjetaModo(m, m.icono(), !ajustes.completo && ajustes.modo == m, Modifier.weight(1f)) {
+                                alCambiar(ajustes.copy(completo = false, modo = m))
+                            }
+                        }
                     }
                 }
                 Text(
-                    if (ajustes.modo == Modo.OJO) "Mira de frente con el ojo bien abierto. La IA guía tu cámara."
-                    else "Jala tu párpado de abajo y mira hacia arriba. Mejor con luz blanca de día.",
+                    if (ajustes.completo) "5 pasos, unos 4 minutos: tus datos, tus dos ojos de cerca, el párpado, tu cara y tu encía. " +
+                        "Cada medición confirma o descarta a las otras. Puedes saltar un paso si no puedes hacerlo."
+                    else when (ajustes.modo) {
+                        Modo.OJO -> "Mira de frente con el ojo bien abierto. La IA guía tu cámara."
+                        Modo.ANEMIA -> "Jala tu párpado de abajo y mira hacia arriba. Mejor con luz blanca de día."
+                        Modo.ROSTRO -> "Cara de frente y relajada, a un brazo de distancia, con luz de día. Sin lentes ni fleco sobre los ojos."
+                        Modo.PALMA -> "Mano abierta con la palma hacia la cámara, dedos un poco separados, con luz de día y sin flash."
+                        Modo.ENCIA -> "Dientes juntos y sonrisa grande levantando el labio de arriba: que se vea la encía. Luz de día."
+                    },
                     color = Colores.textoSuave, fontSize = 12.sp, lineHeight = 16.sp,
                 )
             }
 
             // ── Objetivo ───────────────────────────────────────────────
-            PanelVidrio(Modifier.fillMaxWidth()) {
+            if (!sinObjetivo) PanelVidrio(Modifier.fillMaxWidth()) {
                 TituloHud("02", "Objetivo")
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     for (o in Ojo.entries) {
@@ -157,7 +178,7 @@ fun PantallaInicio(ajustes: Ajustes, alCambiar: (Ajustes) -> Unit, alEscanear: (
 
             // ── Sensor ─────────────────────────────────────────────────
             PanelVidrio(Modifier.fillMaxWidth()) {
-                TituloHud("03", "Sensor óptico")
+                TituloHud(if (sinObjetivo) "02" else "03", "Sensor óptico")
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Segmento("Frontal", !ajustes.trasera, { alCambiar(ajustes.copy(trasera = false)) }, Modifier.weight(1f),
                         detalle = "Te ves en pantalla")
@@ -171,7 +192,7 @@ fun PantallaInicio(ajustes: Ajustes, alCambiar: (Ajustes) -> Unit, alEscanear: (
             // ── Sistema (plegable) ─────────────────────────────────────
             PanelVidrio(Modifier.fillMaxWidth()) {
                 Row(Modifier.fillMaxWidth().clickable { sistemaAbierto = !sistemaAbierto }, verticalAlignment = Alignment.CenterVertically) {
-                    Box(Modifier.weight(1f)) { TituloHud("04", "Sistema") }
+                    Box(Modifier.weight(1f)) { TituloHud(if (sinObjetivo) "03" else "04", "Sistema") }
                     Text(if (sistemaAbierto) "  ▲" else "  ▼", color = Colores.cian, fontSize = 12.sp)
                 }
                 AnimatedVisibility(sistemaAbierto, enter = expandVertically() + fadeIn(), exit = shrinkVertically() + fadeOut()) {
@@ -204,7 +225,7 @@ fun PantallaInicio(ajustes: Ajustes, alCambiar: (Ajustes) -> Unit, alEscanear: (
                 }
             }
 
-            BotonNeon("Iniciar escaneo", alEscanear, Modifier.fillMaxWidth())
+            BotonNeon(if (ajustes.completo) "Iniciar chequeo completo" else "Iniciar escaneo", alEscanear, Modifier.fillMaxWidth())
             Text(
                 "Herramienta de investigación. No es un dispositivo médico ni sustituye la consulta con un especialista.",
                 color = Colores.textoSuave.copy(alpha = 0.7f), fontSize = 10.sp, lineHeight = 13.sp,
@@ -233,6 +254,25 @@ private fun EstadoEnlace(enlace: Enlace, alPulsar: () -> Unit) {
     }
 }
 
+/** Opción principal: las 4 mediciones seguidas. */
+@Composable
+private fun TarjetaCompleto(activo: Boolean, alPulsar: () -> Unit) {
+    val forma = RoundedCornerShape(18.dp)
+    Row(
+        Modifier.fillMaxWidth().bordeModo(activo, forma).clickable(onClick = alPulsar).padding(14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+            Text("RECOMENDADO", style = Hud.etiqueta.copy(fontSize = 8.sp, color = if (activo) Colores.bien else Colores.textoSuave))
+            Text("Chequeo completo", color = if (activo) Colores.texto else Colores.textoSuave, fontWeight = FontWeight.Bold, fontSize = 18.sp)
+            Text("Tus datos + ojos + anemia + rostro + encía → tu perfil médico", color = Colores.textoSuave, fontSize = 11.sp, lineHeight = 14.sp)
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            for (m in Modo.entries) Icon(m.icono(), null, tint = if (activo) Colores.cian else Colores.textoSuave, modifier = Modifier.size(18.dp))
+        }
+    }
+}
+
 @Composable
 private fun TarjetaModo(
     modo: Modo,
@@ -243,16 +283,16 @@ private fun TarjetaModo(
 ) {
     val forma = RoundedCornerShape(18.dp)
     Column(
-        modifier.height(118.dp)
+        modifier.height(132.dp)
             .bordeModo(activo, forma)
             .clickable(onClick = alPulsar)
-            .padding(14.dp),
+            .padding(horizontal = 11.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.SpaceBetween,
     ) {
-        Icon(icono, null, tint = if (activo) Colores.cian else Colores.textoSuave, modifier = Modifier.size(30.dp))
+        Icon(icono, null, tint = if (activo) Colores.cian else Colores.textoSuave, modifier = Modifier.size(28.dp))
         Column {
-            Text(modo.titulo, color = if (activo) Colores.texto else Colores.textoSuave, fontWeight = FontWeight.Bold, fontSize = 17.sp)
-            Text(modo.detalle, color = Colores.textoSuave, fontSize = 10.sp, lineHeight = 13.sp)
+            Text(modo.titulo, color = if (activo) Colores.texto else Colores.textoSuave, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+            Text(modo.detalle, color = Colores.textoSuave, fontSize = 10.sp, lineHeight = 12.sp, maxLines = 3)
         }
     }
 }
@@ -275,7 +315,7 @@ private fun IrisHolografico(modo: Modo, modifier: Modifier) {
     val giro2 by t.animateFloat(360f, 0f, infiniteRepeatable(tween(9000, easing = LinearEasing)))
     val pupila by t.animateFloat(0.26f, 0.34f, infiniteRepeatable(tween(2200, easing = FastOutSlowInEasing), RepeatMode.Reverse))
     val barrido by t.animateFloat(0f, 1f, infiniteRepeatable(tween(2800, easing = LinearEasing)))
-    val principal = if (modo == Modo.OJO) Colores.cian else Colores.magenta
+    val principal = when (modo) { Modo.OJO -> Colores.cian; Modo.ANEMIA -> Colores.magenta; Modo.ROSTRO -> Colores.violeta; Modo.PALMA -> Colores.atencion; Modo.ENCIA -> Colores.magenta }
     Canvas(modifier) {
         val c = Offset(size.width / 2, size.height / 2)
         val r = size.minDimension / 2

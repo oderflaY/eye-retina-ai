@@ -59,21 +59,22 @@ import kotlin.math.cos
 import kotlin.math.roundToInt
 import kotlin.math.sin
 
-/** Paleta: espacio profundo + neón (cian = IA, violeta = acento, verde/ámbar/rojo = estado). */
+/** Paleta espacial: vacío profundo, nebulosas (violeta/coral), luz estelar (cian) y estados (aurora/sol/Marte). */
 object Colores {
-    val fondo = Color(0xFF04060F)
-    val fondo2 = Color(0xFF0A1028)
-    val vidrio = Color(0x1A9FE8FF)
-    val vidrioFuerte = Color(0x2E7FD8FF)
-    val cian = Color(0xFF00E5FF)
-    val violeta = Color(0xFF8B5CFF)
-    val magenta = Color(0xFFFF3DCB)
-    val texto = Color(0xFFE6F6FF)
-    val textoSuave = Color(0xFF8FA6C2)
-    val bien = Color(0xFF00FFA3)
-    val atencion = Color(0xFFFFC23D)
-    val mal = Color(0xFFFF4D6D)
-    val velo = Color(0xCC02040B)
+    val fondo = Color(0xFF02030A)
+    val fondo2 = Color(0xFF0A0D22)
+    val vidrio = Color(0x1A8FB8FF)
+    val vidrioFuerte = Color(0x2E6F9BFF)
+    val cian = Color(0xFF6FE3FF)
+    val violeta = Color(0xFF8C6BFF)
+    val magenta = Color(0xFFFF6FA8)
+    val texto = Color(0xFFEFF4FF)
+    val textoSuave = Color(0xFF93A3C7)
+    val bien = Color(0xFF4DFFB8)
+    val atencion = Color(0xFFFFB84D)
+    val mal = Color(0xFFFF4F5E)
+    val velo = Color(0xCC02030A)
+    val estrella = Color(0xFFFFF6E0)
 
     // compatibilidad con nombres anteriores
     val turquesa = cian
@@ -105,40 +106,56 @@ fun TemaOjo(contenido: @Composable () -> Unit) {
     )
 }
 
-/** Fondo animado: degradado radial que respira, rejilla en perspectiva y partículas que suben. */
+/** Fondo espacial: nebulosas que derivan, tres capas de estrellas que titilan, un planeta con anillo y estrellas fugaces. */
 @Composable
 fun FondoEspacial(modifier: Modifier = Modifier, contenido: @Composable BoxScope.() -> Unit) {
     val t = rememberInfiniteTransition()
-    val fase by t.animateFloat(0f, 1f, infiniteRepeatable(tween(14000, easing = LinearEasing)))
-    val respira by t.animateFloat(0.85f, 1.15f, infiniteRepeatable(tween(5000, easing = FastOutSlowInEasing), RepeatMode.Reverse))
+    val fase by t.animateFloat(0f, 1f, infiniteRepeatable(tween(60000, easing = LinearEasing)))
+    val brillo by t.animateFloat(0f, 1f, infiniteRepeatable(tween(4000, easing = LinearEasing)))
+    val fugaz by t.animateFloat(0f, 1f, infiniteRepeatable(tween(9000, easing = LinearEasing)))
     Box(
         modifier.fillMaxSize().background(Colores.fondo).drawBehind {
             val w = size.width
             val h = size.height
-            drawRect(Brush.radialGradient(listOf(Colores.violeta.copy(alpha = 0.28f), Color.Transparent),
-                center = Offset(w * 0.85f, h * 0.08f), radius = w * 0.9f * respira))
-            drawRect(Brush.radialGradient(listOf(Colores.cian.copy(alpha = 0.18f), Color.Transparent),
-                center = Offset(w * 0.1f, h * 0.55f), radius = w * 0.8f * (2f - respira)))
-            // rejilla en perspectiva (suelo) que avanza
-            val horizonte = h * 0.72f
-            val lineas = Colores.cian.copy(alpha = 0.10f)
-            for (i in 0..14) {
-                val p = ((i + fase * 2f) % 14f) / 14f
-                val y = horizonte + (h - horizonte) * p * p
-                drawLine(lineas.copy(alpha = 0.04f + 0.12f * p), Offset(0f, y), Offset(w, y), 1.dp.toPx())
+            val dos = 2f * PI.toFloat()
+            // nebulosas
+            drawRect(Brush.radialGradient(listOf(Colores.violeta.copy(alpha = 0.26f), Color.Transparent),
+                center = Offset(w * (0.8f + 0.05f * sin(fase * dos)), h * 0.12f), radius = w * 0.85f))
+            drawRect(Brush.radialGradient(listOf(Colores.magenta.copy(alpha = 0.13f), Color.Transparent),
+                center = Offset(w * 0.05f, h * (0.42f + 0.03f * cos(fase * dos))), radius = w * 0.7f))
+            drawRect(Brush.radialGradient(listOf(Color(0xFF1FA2C9).copy(alpha = 0.14f), Color.Transparent),
+                center = Offset(w * 0.65f, h * 0.78f), radius = w * 0.75f))
+            // estrellas en 3 capas (las cercanas derivan más rápido)
+            for (i in 0 until 150) {
+                val capa = i % 3
+                val sx = ((i * 0.6180339f + i * i * 0.000371f) % 1f)
+                val sy = ((i * 0.7548776f + i * 0.0137f) % 1f)
+                val x = ((sx + fase * (0.02f + 0.03f * capa)) % 1f) * w
+                val y = sy * h
+                val tit = 0.5f + 0.5f * sin((brillo + i * 0.137f) * dos)
+                val r = (0.5f + 0.55f * capa) * 1.dp.toPx()
+                val a = (0.25f + 0.25f * capa) * (0.55f + 0.45f * tit)
+                val color = when (i % 11) { 0 -> Colores.cian; 5 -> Color(0xFFFFD2A0); else -> Colores.estrella }
+                if (capa == 2 && i % 4 == 0) drawCircle(color.copy(alpha = a * 0.25f), r * 3.5f, Offset(x, y))
+                drawCircle(color.copy(alpha = a), r, Offset(x, y))
             }
-            for (i in -8..8) {
-                val x0 = w / 2 + i * w * 0.04f
-                val x1 = w / 2 + i * w * 0.22f
-                drawLine(lineas, Offset(x0, horizonte), Offset(x1, h), 1.dp.toPx())
-            }
-            // partículas
-            for (i in 0 until 40) {
-                val semilla = (i * 7919) % 1000 / 1000f
-                val x = w * ((i * 0.6180339f) % 1f)
-                val y = h * (1f - ((semilla + fase * (0.3f + semilla)) % 1f))
-                val a = 0.08f + 0.27f * ((i * 37) % 10) / 10f
-                drawCircle((if (i % 3 == 0) Colores.violeta else Colores.cian).copy(alpha = a), 1.2.dp.toPx() + semilla * 1.5f, Offset(x, y))
+            // planeta lejano con atmósfera y anillo
+            val pc = Offset(w * 0.92f, h * 0.93f)
+            val pr = w * 0.32f
+            drawCircle(Brush.radialGradient(listOf(Colores.violeta.copy(alpha = 0.25f), Color.Transparent), pc, pr * 1.45f), pr * 1.45f, pc)
+            drawCircle(Brush.radialGradient(listOf(Color(0xFF3A2C7A), Color(0xFF151236), Colores.fondo),
+                Offset(pc.x - pr * 0.4f, pc.y - pr * 0.45f), pr * 1.5f), pr, pc)
+            drawCircle(Colores.cian.copy(alpha = 0.35f), pr, pc, style = Stroke(1.2.dp.toPx()))
+            drawOval(Colores.cian.copy(alpha = 0.22f), Offset(pc.x - pr * 1.7f, pc.y - pr * 0.28f), Size(pr * 3.4f, pr * 0.56f),
+                style = Stroke(2.dp.toPx()))
+            // estrella fugaz (aparece el primer 12 % de cada ciclo)
+            if (fugaz < 0.12f) {
+                val k = fugaz / 0.12f
+                val ini = Offset(w * 0.15f, h * 0.08f)
+                val cabeza = Offset(ini.x + w * 0.6f * k, ini.y + h * 0.18f * k)
+                val cola = Offset(cabeza.x - w * 0.16f, cabeza.y - h * 0.048f)
+                drawLine(Brush.linearGradient(listOf(Color.Transparent, Colores.estrella.copy(alpha = 0.9f * (1f - k))), cola, cabeza),
+                    cola, cabeza, 1.6.dp.toPx(), cap = StrokeCap.Round)
             }
         },
         content = contenido,

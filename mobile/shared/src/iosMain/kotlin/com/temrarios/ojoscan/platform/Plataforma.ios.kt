@@ -67,3 +67,12 @@ private class VozIos : Voz {
 
 actual fun decodificarImagen(bytes: ByteArray): ImageBitmap? =
     runCatching { org.jetbrains.skia.Image.makeFromEncoded(bytes).toComposeImageBitmap() }.getOrNull()
+
+@Composable
+actual fun rememberAlmacen(): Almacen = remember {
+    object : Almacen {
+        private val d = platform.Foundation.NSUserDefaults.standardUserDefaults
+        override fun leer(clave: String) = d.stringForKey(clave)
+        override fun guardar(clave: String, valor: String) = d.setObject(valor, clave)
+    }
+}

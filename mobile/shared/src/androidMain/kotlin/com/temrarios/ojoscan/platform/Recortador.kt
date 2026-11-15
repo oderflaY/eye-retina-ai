@@ -28,10 +28,12 @@ object Recortador {
     private const val RECORTE_MAX = 512
     private const val APERTURA_MIN = 0.14f   // en la foto final solo se rechaza un parpadeo claro
     private const val OJO_MIN_PX = 110f
+    private const val ROSTRO_MAX = 1280
 
     /** [foto] en la orientación del sensor; [rotacion] grados para dejarla derecha. */
     fun procesar(context: Context, foto: Bitmap, rotacion: Int, ojo: Ojo, modo: Modo): Captura {
         val escala = min(1f, LADO_MAX.toFloat() / max(foto.width, foto.height))
+        if (modo.fotoLibre) return fotoCompleta(foto, rotacion)
         val derecha = enderezar(foto, rotacion, escala)
         try {
             val d = DetectorOjo.de(context).detectarFino(derecha, cuadradoCentral(derecha.width, derecha.height))
@@ -47,6 +49,18 @@ object Recortador {
         } finally {
             derecha.recycle()
         }
+    }
+
+    /** Modo rostro: la foto entera (máx. 1280 px); la cara la busca el servidor con MediaPipe. */
+    private fun fotoCompleta(foto: Bitmap, rotacion: Int): Captura {
+        val img = enderezar(foto, rotacion, min(1f, ROSTRO_MAX.toFloat() / max(foto.width, foto.height)))
+        val bytes = ByteArrayOutputStream().use {
+            img.compress(Bitmap.CompressFormat.JPEG, 92, it)
+            it.toByteArray()
+        }
+        val r = Recorte(Ojo.AMBOS, bytes, img.width, img.height, null, emptyMap(), null)
+        img.recycle()
+        return Captura.Exito(listOf(r))
     }
 
     private fun recortar(img: Bitmap, d: DetectorOjo.Deteccion, apertura: Float, ojo: Ojo, modo: Modo): Recorte {

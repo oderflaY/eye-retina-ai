@@ -58,3 +58,12 @@ expect fun rememberVoz(): Voz
 
 /** JPEG/PNG → imagen para Compose. */
 expect fun decodificarImagen(bytes: ByteArray): ImageBitmap?
+
+/** Guardado local pequeño (texto por clave) que sobrevive al cerrar la app. Nada sale del teléfono. */
+interface Almacen {
+    fun leer(clave: String): String?
+    fun guardar(clave: String, valor: String)
+}
+
+@Composable
+expect fun rememberAlmacen(): Almacen

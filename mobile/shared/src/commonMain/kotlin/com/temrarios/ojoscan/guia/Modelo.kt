@@ -9,8 +9,14 @@ enum class Ojo(val nombre: String) {
 
 /** Qué se va a revisar. Cambia la foto que se pide y el análisis que se hace. */
 enum class Modo(val titulo: String, val detalle: String) {
-    OJO("Ojo", "Enrojecimiento, pterigión, catarata"),
-    ANEMIA("Anemia", "Palidez del párpado por dentro"),
+    OJO("Ojo", "Ojo rojo, pterigión, catarata"),
+    ANEMIA("Anemia", "Palidez del párpado"),
+    ROSTRO("Rostro", "Parálisis facial, ictericia"),
+    PALMA("Palma", "Anemia por la palma"),
+    ENCIA("Encía", "Anemia por la encía (experimental)");
+
+    /** Foto completa con cuenta regresiva (sin guía de ojo); lo que se analiza lo busca el servidor. */
+    val fotoLibre: Boolean get() = this == ROSTRO || this == PALMA || this == ENCIA
 }
 
 /**

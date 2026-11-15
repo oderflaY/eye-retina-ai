@@ -46,6 +46,7 @@ kotlin {
             implementation(libs.androidx.exifinterface)
             implementation(libs.mlkit.face)
             implementation(libs.litert)
+            implementation(libs.health.connect)
         }
         iosMain.dependencies {
             implementation(libs.ktor.client.darwin)

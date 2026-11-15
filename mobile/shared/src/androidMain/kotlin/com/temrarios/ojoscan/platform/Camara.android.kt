@@ -184,3 +184,15 @@ private class VozAndroid(context: android.content.Context) : Voz {
 
 actual fun decodificarImagen(bytes: ByteArray): ImageBitmap? =
     BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.asImageBitmap()
+
+@Composable
+actual fun rememberAlmacen(): Almacen {
+    val context = LocalContext.current
+    return remember {
+        val prefs = context.getSharedPreferences("ojoscan", android.content.Context.MODE_PRIVATE)
+        object : Almacen {
+            override fun leer(clave: String) = prefs.getString(clave, null)
+            override fun guardar(clave: String, valor: String) { prefs.edit().putString(clave, valor).apply() }
+        }
+    }
+}
