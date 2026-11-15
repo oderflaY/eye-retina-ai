@@ -70,3 +70,16 @@ actual fun rememberNotificador(): Notificador = androidx.compose.runtime.remembe
         override fun programarRecordatorios() {}
     }
 }
+
+@androidx.compose.runtime.Composable
+actual fun rememberAnemiaLocal(): AnemiaLocal? = null
+
+@androidx.compose.runtime.Composable
+actual fun rememberCompartidor(): Compartidor = androidx.compose.runtime.remember {
+    object : Compartidor {
+        override val disponible = false
+        override fun compartirPdf(nombre: String, lineas: List<com.temrarios.ojoscan.astro.LineaReporte>) {}
+        override fun guardarRespaldo(nombre: String, json: String, clave: String, listo: (String?) -> Unit) = listo("No disponible en iPhone todavía")
+        override fun abrirRespaldo(clave: String, listo: (String?, String?) -> Unit) = listo(null, "No disponible en iPhone todavía")
+    }
+}

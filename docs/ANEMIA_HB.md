@@ -51,3 +51,12 @@ sensibilidad 0.88, especificidad 0.63 (ponderadas 50/50 por país).
   (Bangladesh lo sugiere). Por eso en la app sigue en **MODO PRUEBAS**.
 - El dataset más grande disponible (IEEE DataPort 10.21227/n7km-nr64, India, 1 485 personas con Hb, CC BY 4.0)
   requiere cuenta; es el siguiente paso para validar con celular.
+
+## En el teléfono, sin internet (v3-móvil)
+`python -m src.training.train_conjuntiva_movil {pseudo|entrenar|anemia}`
+- Segmentador **MobileNetV2-UNet 256 px** (α 0.75), destilado del U-Net ResNet50 del servidor (650 MB → **2.4 MB** TFLite
+  float16): 411 máscaras a mano + 217 máscaras del U-Net grande sobre Eyes-Defy. Dice de validación 0.85 (Eyes-Defy 0.94).
+- Las medidas de color usan Lab con fórmulas exactas (OpenCV usa tablas interpoladas, ±0.3) para que Kotlin
+  (`astro/AnemiaMovil.kt`) dé lo mismo que Python; `AnemiaMovilTest` lo comprueba con píxeles reales.
+- AUC dentro del país con el segmentador chico: **0.81** (India 0.67, Italia 0.92), casi igual al servidor (0.82).
+- La app pregunta primero al servidor; si no hay conexión usa el modelo del teléfono (`platform/AnemiaLocal.android.kt`).

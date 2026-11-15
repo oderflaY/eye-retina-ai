@@ -71,3 +71,24 @@ interface Notificador {
 
 @androidx.compose.runtime.Composable
 expect fun rememberNotificador(): Notificador
+
+/** Anemia por la conjuntiva en el teléfono (sin servidor). null si la plataforma no lo tiene. */
+interface AnemiaLocal {
+    suspend fun analizar(jpeg: ByteArray): com.temrarios.ojoscan.api.AnalisisAnemia?
+}
+
+@androidx.compose.runtime.Composable
+expect fun rememberAnemiaLocal(): AnemiaLocal?
+
+/** Compartir el resumen en PDF y guardar/restaurar el respaldo cifrado (el usuario elige dónde). */
+interface Compartidor {
+    val disponible: Boolean
+    fun compartirPdf(nombre: String, lineas: List<com.temrarios.ojoscan.astro.LineaReporte>)
+    /** Cifra [json] con [clave] y abre «Guardar como…». [listo] recibe el error o null. */
+    fun guardarRespaldo(nombre: String, json: String, clave: String, listo: (String?) -> Unit)
+    /** Abre «Elegir archivo…», descifra y entrega el JSON (o el error). */
+    fun abrirRespaldo(clave: String, listo: (json: String?, error: String?) -> Unit)
+}
+
+@androidx.compose.runtime.Composable
+expect fun rememberCompartidor(): Compartidor

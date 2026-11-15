@@ -104,6 +104,7 @@ fun PantallaResultado(
     alEstudio: (String, String, String, Double?, com.temrarios.ojoscan.astro.Triage) -> Unit = { _, _, _, _, _ -> },
 ) {
     var perfilRes by remember(mediciones) { mutableStateOf<Result<AnalisisPerfil>?>(null) }
+    val anemiaLocal = com.temrarios.ojoscan.platform.rememberAnemiaLocal()
     val piezas = remember(mediciones) { mediciones.flatMap { m -> m.recortes.map { Pieza(m.modo, it) } } }
     val envios = remember(mediciones) { mutableStateListOf<Envio>().apply { repeat(piezas.size) { add(Envio.Enviando) } } }
     // Una por una: la PC con la IA atiende de a una y el intermediario corta a los 55 s.
@@ -119,7 +120,7 @@ fun PantallaResultado(
                 null, t)
         }
         for ((i, p) in piezas.withIndex()) {
-            envios[i] = analizar(api, ajustes, p)
+            envios[i] = analizar(api, ajustes, p, anemiaLocal)
             (envios[i] as? Envio.ListoAnemia)?.a?.takeIf { it.valida }?.let { alAnemia(p.modo, it) }
             (envios[i] as? Envio.Listo)?.a?.let { o ->
                 val normal = o.principal == "normal"
@@ -184,7 +185,7 @@ fun PantallaResultado(
     }
 }
 
-private suspend fun analizar(api: OjoApi, ajustes: Ajustes, p: Pieza): Envio {
+private suspend fun analizar(api: OjoApi, ajustes: Ajustes, p: Pieza, local: com.temrarios.ojoscan.platform.AnemiaLocal? = null): Envio {
     val r = p.r
     // Las fotos de cara completa y de la mano nunca se donan: son biométricas.
     val guardado = if (ajustes.guardar && !p.modo.fotoLibre) {
@@ -195,7 +196,10 @@ private suspend fun analizar(api: OjoApi, ajustes: Ajustes, p: Pieza): Envio {
     return when (p.modo) {
         Modo.ENCIA -> runCatching { api.analizarEncia(r.jpeg) }.fold({ Envio.ListoAnemia(it, guardado) }, { Envio.Fallo(explicar(it), guardado) })
         Modo.PALMA -> runCatching { api.analizarPalma(r.jpeg) }.fold({ Envio.ListoAnemia(it, guardado) }, { Envio.Fallo(explicar(it), guardado) })
-        Modo.ANEMIA -> runCatching { api.analizarAnemia(r.jpeg) }.fold({ Envio.ListoAnemia(it, guardado) }, { Envio.Fallo(explicar(it), guardado) })
+        // Sin servidor (sin internet o la PC apagada) → el modelo chico del teléfono.
+        Modo.ANEMIA -> runCatching { api.analizarAnemia(r.jpeg) }.fold({ Envio.ListoAnemia(it, guardado) }, { e ->
+            local?.analizar(r.jpeg)?.let { Envio.ListoAnemia(it, guardado ?: "Analizado en el teléfono (sin servidor)") } ?: Envio.Fallo(explicar(e), guardado)
+        })
         Modo.ROSTRO -> runCatching { api.analizarRostro(r.jpeg) }.fold({ Envio.ListoRostro(it, guardado) }, { Envio.Fallo(explicar(it), guardado) })
         Modo.OJO -> runCatching { api.analizarOjo(r.jpeg) }.fold({ Envio.Listo(it, guardado) }, { Envio.Fallo(explicar(it), guardado) })
     }

@@ -246,6 +246,40 @@ class AstroPulseEngine(private val almacen: Almacen, private val reloj: () -> Lo
         }
     }
 
+    /** Medición que la persona anota a mano (baumanómetro, báscula, glucómetro, termómetro, laboratorio). */
+    fun anotar(tipo: String, valor: Double, valor2: Double? = null, mujer: Boolean = false, ayunas: Boolean = false) {
+        val ahora = reloj()
+        val r = when (tipo) {
+            "presion" -> Registro(ahora, "presion", "Presión arterial", valor, "mmHg", "${valor.toInt()}/${(valor2 ?: 0.0).toInt()}",
+                Seguimiento.clasificarPresion(valor, valor2 ?: 0.0), "baumanómetro")
+            "peso" -> Registro(ahora, "peso", "Peso", valor, "kg", "", Triage.NOMINAL, "báscula")
+            "glucosa" -> Registro(ahora, "glucosa", "Glucosa", valor, "mg/dL", if (ayunas) "en ayunas" else "casual",
+                Seguimiento.clasificarGlucosa(valor, ayunas), "glucómetro")
+            "temperatura" -> Registro(ahora, "temperatura", "Temperatura", valor, "°C", "", Seguimiento.clasificarTemperatura(valor), "termómetro")
+            "hb_lab" -> Registro(ahora, "hb_lab", "Hemoglobina (laboratorio)", valor, "g/dL", "biometría hemática",
+                Seguimiento.clasificarHb(valor, mujer), "laboratorio")
+            else -> return
+        }
+        registrar(r)
+    }
+
+    fun respaldo(): String = ReporteSalud.respaldoJson(Respaldo(creadoMs = reloj(), historial = _registros.value, diario = _diario.value,
+        perfil = almacen.leer("perfil")))
+
+    /** Une el respaldo con lo que ya hay (no borra nada; los repetidos se ignoran). Devuelve cuántos registros nuevos entraron. */
+    fun restaurar(json: String): Int? {
+        val r = ReporteSalud.respaldoDe(json) ?: return null
+        val antes = _registros.value.size + _diario.value.size
+        if (almacen.leer("perfil") == null) r.perfil?.let { almacen.guardar("perfil", it) }
+        _registros.update { (it + r.historial).distinctBy { x -> x.horaMs to x.tipo }.sortedBy { x -> x.horaMs }.takeLast(3000) }
+        _diario.update { (it + r.diario).distinctBy { x -> x.horaMs }.sortedBy { x -> x.horaMs }.takeLast(400) }
+        almacen.guardar("historial_v1", Seguimiento.aJson(_registros.value))
+        almacen.guardar("diario_v1", jsonDiario.encodeToString(ListSerializer(EntradaDiario.serializer()), _diario.value))
+        actualizarHistorial(avisar = false)
+        recalcular { it }
+        return _registros.value.size + _diario.value.size - antes
+    }
+
     fun avisosEntregados() { _porAvisar.value = emptyList() }
 
     fun revisiones(): List<Revision> = Seguimiento.revisiones(_historial.value, reloj())

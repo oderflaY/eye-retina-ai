@@ -65,7 +65,7 @@ object Seguimiento {
         TipoRevision("pvt", "Test de alerta (PVT)", setOf("pvt"), 7, 3, 1, "Haz el Test Cognitivo PVT."),
         TipoRevision("anemia", "Tamizaje de anemia", setOf("anemia"), 30, 14, 7, "Párpado, palma o encía en el tablero."),
         TipoRevision("ojo", "Revisión del ojo", setOf("ojo"), 30, 14, 7, "Escaneo de ojo de cerca."),
-        TipoRevision("perfil", "Peso y presión", setOf("perfil"), 30, 14, 7, "Actualiza «Tus datos» en el chequeo completo."),
+        TipoRevision("perfil", "Peso y presión", setOf("perfil", "presion", "peso"), 30, 14, 7, "Anota tu presión y peso (Mi Historial → Agregar) o actualiza «Tus datos»."),
     )
 
     // ── recordatorios ──
@@ -116,6 +116,10 @@ object Seguimiento {
                 a += Alerta("anemia_sube_${metodo}_${s.last().horaMs}", Triage.ADVERTENCIA, "Anemia: tu $metodo empeoró",
                     "De ${pct(s[s.size - 2].valor!!)} a ${pct(s.last().valor!!)} entre las dos últimas mediciones. Considera un análisis de sangre (biometría hemática).", s.last().horaMs)
         }
+        // 4b. presión alta en 2 o más tomas de las últimas 2 semanas
+        val pres = h.filter { it.tipo == "presion" && ahora - it.horaMs <= 14 * DIA && it.triage != Triage.NOMINAL }
+        if (pres.size >= 2) a += Alerta("presion_alta_$dia", Triage.ADVERTENCIA, "Presión alta en varias tomas",
+            "${pres.size} tomas fuera de rango en 2 semanas (última ${pres.maxBy { it.horaMs }.texto} mmHg). Consulta a tu médico.", ahora)
         // 5. diario: muchos días con molestias
         val diasMal = h.filter { it.tipo == "diario" && ahora - it.horaMs <= 7 * DIA && it.triage != Triage.NOMINAL }.map { it.horaMs / DIA }.distinct().size
         if (diasMal >= 3) a += Alerta("diario_semana_$dia", Triage.ADVERTENCIA, "Semana con molestias",
@@ -129,6 +133,21 @@ object Seguimiento {
     // ── clasificación de una medición nueva ──
     fun clasificarPulso(lpm: Double) = when { lpm < 40 || lpm > 150 -> Triage.CRITICO; lpm < 50 || lpm > 110 -> Triage.ADVERTENCIA; else -> Triage.NOMINAL }
     fun clasificarSpo2(v: Double) = when { v < 90 -> Triage.CRITICO; v < 94 -> Triage.ADVERTENCIA; else -> Triage.NOMINAL }
+    /** AHA 2017: crisis ≥180/120; hipertensión ≥130/80 (≥140/90 estadio 2). */
+    fun clasificarPresion(sis: Double, dia: Double) = when {
+        sis >= 180 || dia >= 120 || sis < 85 -> Triage.CRITICO
+        sis >= 130 || dia >= 80 || sis < 90 -> Triage.ADVERTENCIA
+        else -> Triage.NOMINAL
+    }
+    fun clasificarGlucosa(mgdl: Double, ayunas: Boolean) = when {
+        mgdl < 54 || mgdl > 300 -> Triage.CRITICO
+        mgdl < 70 || (if (ayunas) mgdl >= 100 else mgdl >= 180) -> Triage.ADVERTENCIA
+        else -> Triage.NOMINAL
+    }
+    fun clasificarTemperatura(c: Double) = when { c >= 41 || c <= 35 -> Triage.CRITICO; c >= 38 -> Triage.ADVERTENCIA; else -> Triage.NOMINAL }
+    /** Hemoglobina de laboratorio, OMS. */
+    fun clasificarHb(g: Double, mujer: Boolean) = when { g < 8 -> Triage.CRITICO; g < (if (mujer) 12.0 else 13.0) -> Triage.ADVERTENCIA; else -> Triage.NOMINAL }
+
     fun clasificarProbabilidad(p: Double) = when { p >= 0.65 -> Triage.CRITICO; p >= 0.35 -> Triage.ADVERTENCIA; else -> Triage.NOMINAL }
 
     // ── utilidades ──
@@ -166,7 +185,12 @@ object ConsultaHistorial {
         "impacto" to listOf("golpe", "impacto", "caida", "imu"),
         "ojo" to listOf("ojo", "vista", "pterigion", "catarata", "enrojecimiento"),
         "rostro" to listOf("rostro", "cara", "ictericia", "paralisis"),
-        "perfil" to listOf("peso", "presion", "grasa", "imc", "perfil", "cintura"),
+        "presion" to listOf("presion", "tension", "baumanometro", "mmhg"),
+        "peso" to listOf("peso", "kilos", "kg"),
+        "glucosa" to listOf("glucosa", "azucar", "glucemia"),
+        "temperatura" to listOf("temperatura", "fiebre", "calentura"),
+        "hb_lab" to listOf("hemoglobina", "biometria"),
+        "perfil" to listOf("grasa", "imc", "perfil", "cintura"),
     )
 
     /** ¿La pregunta es sobre SU historial (y no un síntoma nuevo)? */
@@ -176,7 +200,7 @@ object ConsultaHistorial {
             "recordatorio", "revision", "ultima medicion", "ultimo resultado", "ultimas", "promedio", "como ha estado", "como ha ido",
             "como va mi", "como van mis", "como esta mi", "tendencia", "alertas", "algo raro", "algo malo", "mi semana", "mi mes",
             "esta semana", "este mes", "evolucion", "he mejorado", "he empeorado", "comparado").any { it in t } ||
-            Regex("\\bmis? (pulso|oxigeno|anemia|diario|presion|peso|ojo|pvt|mediciones|datos)\\b").containsMatchIn(t)
+            Regex("\\bmis? (pulso|oxigeno|anemia|diario|presion|peso|ojo|pvt|mediciones|datos|glucosa|temperatura|hemoglobina)\\b").containsMatchIn(t)
     }
 
     private fun ventana(t: String, ahora: Long): Pair<Long, String> {

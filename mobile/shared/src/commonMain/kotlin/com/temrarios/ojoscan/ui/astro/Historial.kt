@@ -92,6 +92,24 @@ fun PanelHistorial(motor: AstroPulseEngine) {
     var pregunta by remember { mutableStateOf("") }
     val respuestas = remember { mutableStateListOf<Pair<String, Mensaje>>() }
     val ahora = ahoraMs()
+    val compartir = com.temrarios.ojoscan.platform.rememberCompartidor()
+
+    // ── Acciones: anotar, PDF para el médico, respaldo ──
+    var hoja by remember { mutableStateOf<String?>(null) } // "anotar" | "respaldo"
+    var mensaje by remember { mutableStateOf<String?>(null) }
+    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        Rapido("＋ Agregar medición", Modifier.weight(1f)) { hoja = if (hoja == "anotar") null else "anotar" }
+        Rapido("Resumen PDF", Modifier.weight(1f)) {
+            if (compartir.disponible) compartir.compartirPdf("resumen_salud.pdf", com.temrarios.ojoscan.astro.ReporteSalud.lineas(h, ahoraMs(), ::fecha))
+            else mensaje = "No disponible en este teléfono."
+        }
+        Rapido("Respaldo", Modifier.weight(1f)) { hoja = if (hoja == "respaldo") null else "respaldo" }
+    }
+    mensaje?.let { Text(it, color = Cabina.acento, fontSize = 12.sp) }
+    when (hoja) {
+        "anotar" -> PanelAnotar(motor) { m -> mensaje = m; hoja = null }
+        "respaldo" -> PanelRespaldo(motor, compartir) { m -> mensaje = m }
+    }
 
     // ── Alertas ──
     val activas = alertas.filter { it.triage != Triage.NOMINAL }
@@ -192,5 +210,84 @@ private fun Grafica(p: List<Registro>) {
         drawRect(Cabina.verde.copy(alpha = 0.08f), Offset(0f, y(110.0)), androidx.compose.ui.geometry.Size(size.width, y(50.0) - y(110.0)))
         for (i in 1 until p.size) drawLine(Cabina.acento.copy(alpha = 0.6f), Offset(x(p[i - 1].horaMs), y(vals[i - 1])), Offset(x(p[i].horaMs), y(vals[i])), 2f)
         for ((i, r) in p.withIndex()) drawCircle(r.triage.color(), 4f, Offset(x(r.horaMs), y(vals[i])))
+    }
+}
+
+
+private val ANOTABLES = listOf("presion" to "Presión", "peso" to "Peso", "glucosa" to "Glucosa", "temperatura" to "Temperatura", "hb_lab" to "Hemoglobina")
+
+@Composable
+private fun PanelAnotar(motor: AstroPulseEngine, listo: (String) -> Unit) {
+    var tipo by remember { mutableStateOf("presion") }
+    var a by remember { mutableStateOf("") }
+    var b by remember { mutableStateOf("") }
+    var mujer by remember { mutableStateOf(false) }
+    var ayunas by remember { mutableStateOf(true) }
+    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(Cabina.vidrio).padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            for ((k, n) in ANOTABLES) {
+                val sel = tipo == k
+                Box(Modifier.weight(1f).clip(RoundedCornerShape(8.dp)).background(if (sel) Cabina.acento.copy(alpha = 0.25f) else Cabina.vidrioAlto)
+                    .clickable { tipo = k; a = ""; b = "" }.padding(vertical = 6.dp), contentAlignment = Alignment.Center) {
+                    Text(n, color = if (sel) Cabina.texto else Cabina.suave, fontSize = 10.sp, maxLines = 1)
+                }
+            }
+        }
+        val (etiqueta, ej) = when (tipo) {
+            "presion" -> "Sistólica / diastólica (mmHg)" to "120"
+            "peso" -> "Peso (kg)" to "70.5"
+            "glucosa" -> "Glucosa (mg/dL)" to "95"
+            "temperatura" -> "Temperatura (°C)" to "36.6"
+            else -> "Hemoglobina del laboratorio (g/dL)" to "13.2"
+        }
+        Text(etiqueta, color = Cabina.suave, fontSize = 11.sp)
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedTextField(a, { a = it.filter { c -> c.isDigit() || c == '.' || c == ',' } }, Modifier.weight(1f), singleLine = true,
+                colors = campoDiario(), placeholder = { Text(ej) })
+            if (tipo == "presion") OutlinedTextField(b, { b = it.filter { c -> c.isDigit() } }, Modifier.weight(1f), singleLine = true,
+                colors = campoDiario(), placeholder = { Text("80") })
+        }
+        if (tipo == "glucosa") Rapido(if (ayunas) "✓ En ayunas" else "Casual (no en ayunas)", Modifier.fillMaxWidth()) { ayunas = !ayunas }
+        if (tipo == "hb_lab") Rapido(if (mujer) "✓ Mujer (anemia < 12)" else "Hombre (anemia < 13)", Modifier.fillMaxWidth()) { mujer = !mujer }
+        if (tipo == "presion") Text("Tip: si mides la presión justo después del pulso con la cámara, la app junta los dos datos para calibrar el modelo de presión.",
+            color = Cabina.suave, fontSize = 10.sp, lineHeight = 13.sp)
+        if (tipo == "hb_lab") Text("Si te tomaste foto del párpado el mismo día, este valor sirve para revisar qué tan bien acierta la app.",
+            color = Cabina.suave, fontSize = 10.sp, lineHeight = 13.sp)
+        val v = a.replace(',', '.').toDoubleOrNull()
+        val v2 = b.toDoubleOrNull()
+        val rango = when (tipo) {
+            "presion" -> v != null && v2 != null && v in 60.0..260.0 && v2 in 30.0..160.0
+            "peso" -> v != null && v in 2.0..350.0
+            "glucosa" -> v != null && v in 20.0..700.0
+            "temperatura" -> v != null && v in 30.0..44.0
+            else -> v != null && v in 3.0..25.0
+        }
+        Rapido(if (rango) "Guardar" else "Escribe un valor válido", Modifier.fillMaxWidth()) {
+            if (rango) { motor.anotar(tipo, v!!, v2, mujer, ayunas); listo("Guardado en tu historial.") }
+        }
+    }
+}
+
+@Composable
+private fun PanelRespaldo(motor: AstroPulseEngine, compartir: com.temrarios.ojoscan.platform.Compartidor, aviso: (String) -> Unit) {
+    var clave by remember { mutableStateOf("") }
+    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(Cabina.vidrio).padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text("El respaldo se cifra con tu contraseña (AES-256). Guárdalo en Drive o en Descargas; sin la contraseña nadie puede leerlo, ni tú.",
+            color = Cabina.suave, fontSize = 11.sp, lineHeight = 14.sp)
+        OutlinedTextField(clave, { clave = it }, Modifier.fillMaxWidth(), singleLine = true, colors = campoDiario(),
+            placeholder = { Text("Contraseña (mínimo 6)") },
+            visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation())
+        val ok = clave.length >= 6 && compartir.disponible
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            Rapido("Guardar respaldo", Modifier.weight(1f)) {
+                if (ok) compartir.guardarRespaldo("astropulse_respaldo.apr", motor.respaldo(), clave) { e -> aviso(e ?: "Respaldo guardado.") }
+                else aviso("Escribe una contraseña de al menos 6 caracteres.")
+            }
+            Rapido("Restaurar", Modifier.weight(1f)) {
+                if (ok) compartir.abrirRespaldo(clave) { json, e ->
+                    aviso(e ?: json?.let { motor.restaurar(it) }?.let { n -> "Restaurado: $n registros nuevos." } ?: "El archivo está dañado.")
+                } else aviso("Escribe la contraseña del respaldo.")
+            }
+        }
     }
 }

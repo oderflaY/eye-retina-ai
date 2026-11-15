@@ -67,6 +67,14 @@
                 <category android:name="android.intent.category.HEALTH_PERMISSIONS" />
             </intent-filter>
         </activity-alias>
+        <!-- Resumen de salud en PDF para compartir (WhatsApp, correo…). -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.archivos"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/archivos_compartidos" />
+        </provider>
         <!-- Recordatorio diario de revisiones (se reprograma al reiniciar o actualizar). -->
         <receiver android:name="com.temrarios.ojoscan.platform.RecordatorioReceiver" android:exported="false">
             <intent-filter>
