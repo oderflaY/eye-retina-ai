@@ -100,6 +100,8 @@ fun PantallaResultado(
     ajustes: Ajustes, mediciones: List<Medicion>, perfil: DatosPerfil?, alRepetir: () -> Unit, alInicio: () -> Unit,
     /** Cada tamizaje de anemia válido se manda al tablero AstroPulse. */
     alAnemia: (Modo, AnalisisAnemia) -> Unit = { _, _ -> },
+    /** Cada resultado (ojo, rostro, perfil) va al historial personal: tipo, nombre, texto, probabilidad, triage. */
+    alEstudio: (String, String, String, Double?, com.temrarios.ojoscan.astro.Triage) -> Unit = { _, _, _, _, _ -> },
 ) {
     var perfilRes by remember(mediciones) { mutableStateOf<Result<AnalisisPerfil>?>(null) }
     val piezas = remember(mediciones) { mediciones.flatMap { m -> m.recortes.map { Pieza(m.modo, it) } } }
@@ -109,9 +111,27 @@ fun PantallaResultado(
         val api = OjoApi(ajustes.servidor)
         // El perfil escrito primero: no tiene fotos y responde en un instante.
         if (perfil != null) perfilRes = runCatching { api.analizarPerfil(perfil) }
+        perfilRes?.getOrNull()?.let { pr ->
+            val malos = pr.indicadores.filter { it.nivel != "ok" }
+            val t = when { pr.indicadores.any { it.nivel == "alta" } -> com.temrarios.ojoscan.astro.Triage.ADVERTENCIA
+                else -> com.temrarios.ojoscan.astro.Triage.NOMINAL }
+            alEstudio("perfil", "Perfil (peso, presión…)", if (malos.isEmpty()) "Indicadores en rango" else malos.joinToString(", ") { "${it.nombre}: ${it.valor}" },
+                null, t)
+        }
         for ((i, p) in piezas.withIndex()) {
             envios[i] = analizar(api, ajustes, p)
             (envios[i] as? Envio.ListoAnemia)?.a?.takeIf { it.valida }?.let { alAnemia(p.modo, it) }
+            (envios[i] as? Envio.Listo)?.a?.let { o ->
+                val normal = o.principal == "normal"
+                alEstudio("ojo", "Ojo ${p.r.ojo.nombre}", o.titulo, if (normal) null else o.confianza,
+                    if (normal) com.temrarios.ojoscan.astro.Triage.NOMINAL else com.temrarios.ojoscan.astro.Triage.ADVERTENCIA)
+            }
+            (envios[i] as? Envio.ListoRostro)?.a?.takeIf { it.cara }?.let { r ->
+                val pos = r.hallazgos.filter { it.resultado == "posible" }
+                alEstudio("rostro", "Rostro", if (pos.isEmpty()) "Sin señales" else pos.joinToString(", ") { it.nombre },
+                    r.hallazgos.maxOfOrNull { it.probabilidad },
+                    if (pos.isEmpty()) com.temrarios.ojoscan.astro.Triage.NOMINAL else com.temrarios.ojoscan.astro.Triage.ADVERTENCIA)
+            }
         }
         api.cerrar()
     }

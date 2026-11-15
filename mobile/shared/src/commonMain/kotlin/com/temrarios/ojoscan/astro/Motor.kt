@@ -48,6 +48,18 @@ class AstroPulseEngine(private val almacen: Almacen, private val reloj: () -> Lo
     private val _base = MutableStateFlow<BaseAuxilios?>(null)
     val base: StateFlow<BaseAuxilios?> = _base.asStateFlow()
 
+    // ── Historial personal: todas las mediciones + recordatorios + alertas ──
+    private val _registros = MutableStateFlow(Seguimiento.deJson(almacen.leer("historial_v1")))
+    private val _historial = MutableStateFlow(emptyList<Registro>())
+    /** Todas las mediciones de la persona (incluye las entradas del diario), de la más vieja a la más nueva. */
+    val historial: StateFlow<List<Registro>> = _historial.asStateFlow()
+    private val _alertas = MutableStateFlow(emptyList<Alerta>())
+    val alertas: StateFlow<List<Alerta>> = _alertas.asStateFlow()
+    /** Alertas nuevas que la interfaz debe convertir en notificación (se vacía al consumirlas). */
+    private val _porAvisar = MutableStateFlow(emptyList<Alerta>())
+    val porAvisar: StateFlow<List<Alerta>> = _porAvisar.asStateFlow()
+    private val ultimoRegistro = mutableMapOf<String, Long>()
+
     val pvt = MotorPvt()
     private val imu = DetectorImpactos()
     private var ultimaImuMs = 0L
@@ -61,6 +73,7 @@ class AstroPulseEngine(private val almacen: Almacen, private val reloj: () -> Lo
         val e = almacen.leer("astro_entorno")?.let { n -> Entorno.entries.firstOrNull { it.name == n } } ?: Entorno.ISS
         _estado.update { it.copy(entorno = e, anemias = anemiasGuardadas()) }
         tic()
+        actualizarHistorial(avisar = false)
         // la latencia con Marte y la dosis cambian con el tiempo: recalcular cada 30 s
         viewModelScope.launch { while (true) { delay(30_000); tic() } }
     }
@@ -99,15 +112,20 @@ class AstroPulseEngine(private val almacen: Almacen, private val reloj: () -> Lo
     fun pulsoPulsera(lpm: Int?) {
         if (lpm == null || lpm <= 0) return
         recalcular { it.copy(pulso = lpm, pulsoFuente = "pulsera en vivo") }
+        registrar(Registro(reloj(), "pulso", "Pulso", lpm.toDouble(), "lpm", "pulsera", Seguimiento.clasificarPulso(lpm.toDouble()), "pulsera"), cadaMin = 30)
     }
 
     fun spo2(valor: Double?, fuente: String) {
         if (valor == null) return
         recalcular { it.copy(spo2 = (valor * 10).roundToInt() / 10.0, spo2Fuente = fuente) }
+        registrar(Registro(reloj(), "spo2", "Oxígeno (SpO₂)", (valor * 10).roundToInt() / 10.0, "%", fuente, Seguimiento.clasificarSpo2(valor), fuente), cadaMin = 30)
     }
 
     fun ppg(l: LecturaPpg) {
         recalcular { it.copy(ppg = l, pulso = if (l.calidad >= 0.5) l.lpm else it.pulso, pulsoFuente = if (l.calidad >= 0.5) "PPG cámara" else it.pulsoFuente) }
+        // una lectura buena por medición (la cámara analiza cada segundo): como máximo cada 10 min
+        if (l.calidad >= 0.5) registrar(Registro(reloj(), "pulso", "Pulso", l.lpm.toDouble(), "lpm", "cámara",
+            Seguimiento.clasificarPulso(l.lpm.toDouble()), "cámara"), cadaMin = 10)
     }
 
     /** Acelerómetro en m/s². Los impactos se guardan siempre; la pantalla se refresca 10 veces por segundo. */
@@ -122,12 +140,16 @@ class AstroPulseEngine(private val almacen: Almacen, private val reloj: () -> Lo
             it.copy(imuG = (pico * 100).roundToInt() / 100.0, imuPicoG = max(it.imuPicoG, (pico * 100).roundToInt() / 100.0),
                 impactos = if (impacto != null) (it.impactos + impacto).takeLast(50) else it.impactos)
         }
+        if (impacto != null) registrar(Registro(impacto.horaMs, "impacto", "Impacto / caída", impacto.g, "g",
+            if (impacto.severo) "severo" else "leve", if (impacto.severo) Triage.CRITICO else Triage.ADVERTENCIA, "IMU"), cadaMin = 1)
     }
 
     /** Resultado de un tamizaje de anemia; se junta con los demás en una sola probabilidad. */
     fun anemia(metodo: String, resultado: String, titulo: String, probabilidad: Double?, auc: Double?) {
         val l = LecturaAnemia(metodo, resultado, titulo, probabilidad, auc, reloj())
         recalcular { it.copy(anemias = it.anemias + (metodo to l)) }
+        registrar(Registro(l.horaMs, "anemia", if (Seguimiento.ANEMIA_EN_PRUEBAS) "Anemia ($metodo) · pruebas" else "Anemia ($metodo)", probabilidad, if (probabilidad != null) "%prob" else "", titulo,
+            probabilidad?.let { Seguimiento.clasificarProbabilidad(it) } ?: if (resultado == "palidez") Triage.ADVERTENCIA else Triage.NOMINAL, metodo))
         almacen.guardar("astro_anemias", _estado.value.anemias.values.joinToString("\n") {
             listOf(it.metodo, it.resultado, it.probabilidad ?: "", it.auc ?: "", it.horaMs, it.titulo.replace("|", " ")).joinToString("|")
         })
@@ -152,6 +174,7 @@ class AstroPulseEngine(private val almacen: Almacen, private val reloj: () -> Lo
         almacen.guardar("diario_v1", jsonDiario.encodeToString(ListSerializer(EntradaDiario.serializer()), _diario.value))
         _evaluacion.value = ev to docs
         recalcular { it }
+        actualizarHistorial()
         return ev
     }
 
@@ -159,6 +182,7 @@ class AstroPulseEngine(private val almacen: Almacen, private val reloj: () -> Lo
         _diario.update { l -> l.filterNot { it.horaMs == horaMs } }
         almacen.guardar("diario_v1", jsonDiario.encodeToString(ListSerializer(EntradaDiario.serializer()), _diario.value))
         recalcular { it }
+        actualizarHistorial(avisar = false)
     }
 
     /** Número de día en la zona horaria del teléfono. */
@@ -182,12 +206,57 @@ class AstroPulseEngine(private val almacen: Almacen, private val reloj: () -> Lo
     fun registrarPvt() {
         val r = pvt.resultado(reloj()) ?: return
         recalcular { it.copy(pvt = r) }
+        registrar(Registro(reloj(), "pvt", "Test de alerta (PVT)", r.medianaMs.toDouble(), "ms", "${r.lapsos} lapsos", r.triage, "PVT"))
     }
+
+    /** Resultado de un escaneo del ojo, rostro o perfil (pantalla de resultados del chequeo). */
+    fun registrarEstudio(tipo: String, nombre: String, texto: String, probabilidad: Double?, triage: Triage) =
+        registrar(Registro(reloj(), tipo, nombre, probabilidad, if (probabilidad != null) "%prob" else "", texto, triage, tipo))
+
+    /** Guarda una medición (con un mínimo de minutos entre dos del mismo tipo y fuente, salvo que cambie de color). */
+    fun registrar(r: Registro, cadaMin: Int = 0) {
+        val k = r.tipo + "|" + r.fuente
+        val previo = _registros.value.lastOrNull { it.tipo == r.tipo && it.fuente == r.fuente }
+        if (cadaMin > 0 && r.horaMs - (ultimoRegistro[k] ?: 0L) < cadaMin * 60_000L && previo?.triage == r.triage) return
+        ultimoRegistro[k] = r.horaMs
+        _registros.update { (it + r).takeLast(3000) }
+        almacen.guardar("historial_v1", Seguimiento.aJson(_registros.value))
+        actualizarHistorial()
+    }
+
+    fun borrarRegistro(horaMs: Long, tipo: String) {
+        if (tipo == "diario") return borrarEntradaDiario(horaMs)
+        _registros.update { l -> l.filterNot { it.horaMs == horaMs && it.tipo == tipo } }
+        almacen.guardar("historial_v1", Seguimiento.aJson(_registros.value))
+        actualizarHistorial()
+    }
+
+    /** Une registros + diario, recalcula alertas y separa las nuevas para notificar. */
+    fun actualizarHistorial(avisar: Boolean = true) {
+        val diario = _diario.value.map { Registro(it.horaMs, "diario", "Diario", it.animo?.toDouble(), "", it.texto, it.triage, "diario") }
+        _historial.value = (_registros.value + diario).sortedBy { it.horaMs }
+        val ahora = reloj()
+        val a = Seguimiento.alertas(_historial.value, ahora)
+        _alertas.value = a
+        val vistas = almacen.leer("alertas_vistas").orEmpty().split(",").filter { it.isNotBlank() }.toSet()
+        val nuevas = a.filter { it.id !in vistas && it.triage != Triage.NOMINAL }
+        if (nuevas.isNotEmpty()) {
+            almacen.guardar("alertas_vistas", (vistas + nuevas.map { it.id }).toList().takeLast(300).joinToString(","))
+            if (avisar) _porAvisar.update { it + nuevas }
+        }
+    }
+
+    fun avisosEntregados() { _porAvisar.value = emptyList() }
+
+    fun revisiones(): List<Revision> = Seguimiento.revisiones(_historial.value, reloj())
+
+    fun consultarHistorial(pregunta: String): Mensaje = ConsultaHistorial.responder(pregunta, _historial.value, reloj())
 
     // ── Asistente ────────────────────────────────────────────────────────────
     fun preguntar(texto: String) {
         if (texto.isBlank()) return
-        val r = Cdss.responder(texto, _estado.value, _base.value)
+        // preguntas sobre SUS datos («¿cómo va mi pulso?», «¿cuándo me toca?») → RAG del historial personal
+        val r = if (ConsultaHistorial.esPersonal(texto)) consultarHistorial(texto) else Cdss.responder(texto, _estado.value, _base.value)
         _chat.update { it + Mensaje(true, texto.trim()) + r }
     }
 
@@ -237,7 +306,8 @@ class AstroPulseEngine(private val almacen: Almacen, private val reloj: () -> Lo
         // Todas las mediciones de anemia en una probabilidad; con pulso anormal el corazón está compensando
         val combinada = FusionAnemia.combinar(t.anemias.values, t.pulsoReposo, ahora,
             pulsoAnormal = pulso == Triage.ADVERTENCIA || pulso == Triage.CRITICO)
-        val anemia = combinada?.triage ?: Triage.SIN_DATOS
+        // en modo pruebas se muestra en su tarjeta pero no mueve el estado general
+        val anemia = if (Seguimiento.ANEMIA_EN_PRUEBAS) Triage.SIN_DATOS else combinada?.triage ?: Triage.SIN_DATOS
         // Diario: la última entrada de las últimas 12 h
         val diario = _diario.value.lastOrNull()?.takeIf { ahora - it.horaMs < 12 * 3_600_000L }?.triage ?: Triage.SIN_DATOS
         val general = Triage.peor(spo2, pulso, imu, estres, anemia, diario).let { if (it == Triage.SIN_DATOS) Triage.NOMINAL else it }

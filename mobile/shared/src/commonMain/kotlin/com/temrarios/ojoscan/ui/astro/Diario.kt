@@ -234,13 +234,13 @@ private fun TarjetaDoc(r: Recuperado, tema: String?) {
 }
 
 @Composable
-private fun Rapido(t: String, modifier: Modifier, alPulsar: () -> Unit) {
+internal fun Rapido(t: String, modifier: Modifier, alPulsar: () -> Unit) {
     Box(modifier.clip(RoundedCornerShape(12.dp)).background(Cabina.vidrioAlto).clickable(onClick = alPulsar).padding(8.dp),
         contentAlignment = Alignment.Center) { Text(t, color = Cabina.texto, fontSize = 11.sp, textAlign = TextAlign.Center, maxLines = 2) }
 }
 
 @Composable
-private fun Llamar(t: String, c: Color, modifier: Modifier, alPulsar: () -> Unit) {
+internal fun Llamar(t: String, c: Color, modifier: Modifier, alPulsar: () -> Unit) {
     Box(modifier.height(52.dp).clip(RoundedCornerShape(14.dp)).background(c.copy(alpha = 0.25f)).border(1.5.dp, c, RoundedCornerShape(14.dp))
         .clickable(onClick = alPulsar), contentAlignment = Alignment.Center) {
         Text(t, color = c, fontWeight = FontWeight.Black, fontSize = 15.sp)
@@ -248,7 +248,7 @@ private fun Llamar(t: String, c: Color, modifier: Modifier, alPulsar: () -> Unit
 }
 
 @Composable
-private fun campoDiario() = OutlinedTextFieldDefaults.colors(
+internal fun campoDiario() = OutlinedTextFieldDefaults.colors(
     focusedBorderColor = Cabina.acento, unfocusedBorderColor = Cabina.borde, focusedTextColor = Cabina.texto,
     unfocusedTextColor = Cabina.texto, cursorColor = Cabina.acento, focusedPlaceholderColor = Cabina.suave, unfocusedPlaceholderColor = Cabina.suave,
 )

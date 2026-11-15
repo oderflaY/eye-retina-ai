@@ -62,3 +62,11 @@ actual fun rememberLectorAssets(): LectorAssets = remember {
 
 // Pendiente en iOS: NSTimeZone.localTimeZone. Mientras, el diario agrupa por día UTC.
 actual fun desfaseHorarioMs(horaMs: Long): Long = 0L
+
+@androidx.compose.runtime.Composable
+actual fun rememberNotificador(): Notificador = androidx.compose.runtime.remember {
+    object : Notificador {
+        override fun avisar(id: Int, titulo: String, texto: String, urgente: Boolean) {}
+        override fun programarRecordatorios() {}
+    }
+}

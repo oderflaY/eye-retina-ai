@@ -7,6 +7,9 @@
     <uses-permission android:name="android.permission.CAMERA" />
     <!-- Bitácora de voz cifrada (AstroPulse). -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <!-- Alertas del historial y recordatorio diario de revisiones. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-feature android:name="android.hardware.camera.any" android:required="true" />
     <uses-feature android:name="android.hardware.sensor.gyroscope" android:required="false" />
     <!-- Pulso en vivo de la pulsera/reloj por Bluetooth (servicio estándar de frecuencia cardíaca). -->
@@ -64,5 +67,12 @@
                 <category android:name="android.intent.category.HEALTH_PERMISSIONS" />
             </intent-filter>
         </activity-alias>
+        <!-- Recordatorio diario de revisiones (se reprograma al reiniciar o actualizar). -->
+        <receiver android:name="com.temrarios.ojoscan.platform.RecordatorioReceiver" android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
     </application>
 </manifest>

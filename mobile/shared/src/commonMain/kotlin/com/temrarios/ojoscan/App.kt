@@ -225,6 +225,7 @@ fun App(servidorPorDefecto: String) {
                     val metodo = when (m) { Modo.PALMA -> "palma"; Modo.ENCIA -> "encía"; else -> "párpado" }
                     motor.anemia(metodo, a.resultado, a.titulo, a.probabilidad, a.validacion?.auc)
                 },
+                alEstudio = { tipo, nombre, texto, prob, triage -> motor.registrarEstudio(tipo, nombre, texto, prob, triage) },
             )
         }
         }

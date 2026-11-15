@@ -61,3 +61,13 @@ expect fun rememberLectorAssets(): LectorAssets
 
 /** Desfase de la zona horaria local respecto a UTC en esa hora (ms), para agrupar el diario por día local. */
 expect fun desfaseHorarioMs(horaMs: Long): Long
+
+/** Notificaciones del teléfono: alertas del historial y recordatorio diario de revisiones. */
+interface Notificador {
+    fun avisar(id: Int, titulo: String, texto: String, urgente: Boolean)
+    /** Revisión diaria (≈10:00) aunque la app esté cerrada: avisa qué revisiones tocan. */
+    fun programarRecordatorios()
+}
+
+@androidx.compose.runtime.Composable
+expect fun rememberNotificador(): Notificador

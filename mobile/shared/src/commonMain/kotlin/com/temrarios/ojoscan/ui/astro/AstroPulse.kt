@@ -96,7 +96,7 @@ fun Triage.color(): Color = when (this) {
 }
 
 /** Módulos que se abren encima del tablero (sin pestañas). */
-enum class Modulo { PPG, PVT, IMU, MANUALES, VOZ, SISTEMA, FARMACIA, SOS, IA, DIARIO }
+enum class Modulo { PPG, PVT, IMU, MANUALES, VOZ, SISTEMA, FARMACIA, SOS, IA, DIARIO, HISTORIAL }
 
 @Composable
 fun AstroPulseMainScreen(
@@ -116,6 +116,14 @@ fun AstroPulseMainScreen(
     val boveda = rememberBoveda()
     val voz = rememberVoz()
     val assets = rememberLectorAssets()
+    val notificador = com.temrarios.ojoscan.platform.rememberNotificador()
+    val porAvisar by motor.porAvisar.collectAsState()
+    // Recordatorio diario (≈10:00) aunque la app esté cerrada; y cada alerta nueva → notificación al momento.
+    LaunchedEffect(Unit) { notificador.programarRecordatorios() }
+    LaunchedEffect(porAvisar) {
+        for (a in porAvisar) notificador.avisar(a.id.hashCode(), a.titulo, a.detalle, a.triage == Triage.CRITICO || a.triage == Triage.ADVERTENCIA)
+        if (porAvisar.isNotEmpty()) motor.avisosEntregados()
+    }
 
     // Base de primeros auxilios del diario (≈5 800 procedimientos): se indexa en segundo plano.
     LaunchedEffect(Unit) { withContext(Dispatchers.Default) { assets.leer("primeros_auxilios.json")?.let(motor::cargarBase) } }
@@ -149,6 +157,7 @@ fun AstroPulseMainScreen(
         ) {
             Cabecera(tm.entorno, motor::cambiarEntorno)
             TarjetaDiario(motor) { abierto = Modulo.DIARIO }
+            TarjetaHistorial(motor) { abierto = Modulo.HISTORIAL }
             TarjetaAnemia(tm, alAnemia, alChequeoCompleto)
             Resumen(tm, estadoPulso)
             val modulos = listOf(
@@ -188,6 +197,7 @@ fun AstroPulseMainScreen(
                 Modulo.MANUALES -> "Manuales Médicos Offline"; Modulo.VOZ -> "Bitácora de Voz"; Modulo.SISTEMA -> "Estado del Sistema"
                 Modulo.FARMACIA -> "Matriz Farmacéutica & Radiación"; Modulo.SOS -> "Baliza SOS"; Modulo.IA -> "IA Asistente (CDSS offline)"
                 Modulo.DIARIO -> "Diario de Salud · Semáforo"
+                Modulo.HISTORIAL -> "Mi Historial · Revisiones y Alertas"
             }, alCerrar = { abierto = null; manualPedido = null }) {
                 when (m) {
                     Modulo.PPG -> PanelPpg(motor, alIaCardiaca, alEscaneos)
@@ -200,6 +210,7 @@ fun AstroPulseMainScreen(
                     Modulo.SOS -> PanelSos(motor)
                     Modulo.IA -> PanelIa(motor) { id -> manualPedido = id; abierto = Modulo.MANUALES }
                     Modulo.DIARIO -> PanelDiario(motor)
+                    Modulo.HISTORIAL -> PanelHistorial(motor)
                 }
             }
         }
@@ -363,7 +374,17 @@ private fun TarjetaAnemia(tm: MissionTelemetry, alAnemia: (Modo) -> Unit, alComp
             Icon(Ico.gota, null, tint = Cabina.rojo, modifier = Modifier.size(30.dp))
             Spacer(Modifier.width(10.dp))
             Text("ANEMIA", color = Cabina.texto, fontWeight = FontWeight.Black, fontSize = 22.sp)
+            if (com.temrarios.ojoscan.astro.Seguimiento.ANEMIA_EN_PRUEBAS) {
+                Spacer(Modifier.weight(1f))
+                Box(Modifier.clip(RoundedCornerShape(8.dp)).background(Cabina.ambar.copy(alpha = 0.18f))
+                    .border(1.dp, Cabina.ambar.copy(alpha = 0.7f), RoundedCornerShape(8.dp)).padding(horizontal = 8.dp, vertical = 4.dp)) {
+                    Text("MODO PRUEBAS", style = Cabina.mono.copy(fontSize = 10.sp, color = Cabina.ambar, fontWeight = FontWeight.Bold))
+                }
+            }
         }
+        if (com.temrarios.ojoscan.astro.Seguimiento.ANEMIA_EN_PRUEBAS)
+            Text("Experimental: se guarda en tu historial, pero no da alertas ni recordatorios y no cuenta en tu estado general. " +
+                "Para saber si tienes anemia, hazte una biometría hemática.", color = Cabina.suave, fontSize = 11.sp, lineHeight = 14.sp)
         Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
             Text(if (a != null) "${a.porcentaje} %" else "— %",
                 style = Cabina.mono.copy(fontSize = 72.sp, color = if (a != null) t.color() else Cabina.suave, fontWeight = FontWeight.Black))
