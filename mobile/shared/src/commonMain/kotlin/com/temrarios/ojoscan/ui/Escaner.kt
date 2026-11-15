@@ -89,7 +89,8 @@ fun PantallaEscaner(
     pulso: com.temrarios.ojoscan.pulso.MonitorPulso? = null,
 ) {
     val modo = paso.modo
-    val motor = remember(modo) { MotorGuia(modo) }
+    // 3 s seguidos en verde antes de la foto (antes 0.9 s: no daba tiempo de prepararse)
+    val motor = remember(modo) { MotorGuia(modo, Umbrales(sostenerMs = SOSTENER_MS)) }
     val voz = rememberVoz()
     // De cerca solo cabe un ojo por foto: "ambos" = primero el izquierdo, luego el derecho.
     val orden = remember(paso.ojo, modo) {
@@ -109,6 +110,18 @@ fun PantallaEscaner(
     val palma = modo == Modo.PALMA
     val encia = modo == Modo.ENCIA
     var cuenta by remember { mutableIntStateOf(0) }  // cuenta regresiva del modo rostro
+    // Ojo / anemia: la guía no arranca hasta que la persona dice "Estoy listo" (y otra vez para el segundo ojo),
+    // y luego da 3 segundos para acomodarse.
+    var listoUsuario by remember(indice) { mutableStateOf(false) }
+    var preparando by remember(indice) { mutableIntStateOf(0) }
+    LaunchedEffect(preparando) {
+        if (preparando > 0) {
+            if (ajustes.voz) voz.decir(if (preparando == 3) "Prepárate. 3" else "$preparando")
+            delay(1000)
+            if (preparando == 1) motor.reiniciar()
+            preparando--
+        }
+    }
 
     LaunchedEffect(cuenta) {
         if (cuenta > 0) {
@@ -141,7 +154,7 @@ fun PantallaEscaner(
             pedirFoto = pedirFoto,
             alLeer = { lectura ->
                 ultima = lectura
-                if (!rostro && !revisando && repetir == null) {
+                if (!rostro && !revisando && repetir == null && listoUsuario && preparando == 0) {
                     val g = motor.evaluar(lectura)
                     guia = g
                     if (ajustes.voz) g.hablar?.let(voz::decir)
@@ -227,6 +240,10 @@ fun PantallaEscaner(
             // ── Estado ──
             val texto = error ?: repetir ?: when {
                 revisando -> "Analizando la foto…"
+                !rostro && !listoUsuario -> "Lee los pasos y toca «Estoy listo»"
+                !rostro && preparando > 0 -> "Prepárate… $preparando"
+                !rostro && guia.aviso == Aviso.LISTO ->
+                    "¡Perfecto! Quieto… ${kotlin.math.ceil((1f - guia.progreso) * SOSTENER_MS / 1000f).toInt().coerceAtLeast(1)}"
                 rostro && cuenta > 0 -> "Quieto… $cuenta"
                 palma -> "Pon la palma abierta dentro del recuadro, con luz de día"
                 encia -> "Dientes juntos y sonríe enseñando la encía de arriba"
@@ -263,8 +280,30 @@ fun PantallaEscaner(
             }
             if (rostro) {
                 BotonNeon(if (cuenta > 0) "Capturando…" else "Tomar foto", { if (cuenta == 0 && !revisando) cuenta = 3 }, Modifier.fillMaxWidth())
+            } else if (!listoUsuario) {
+                Column(
+                    Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(Colores.velo)
+                        .border(1.dp, Colores.cian.copy(alpha = 0.5f), RoundedCornerShape(18.dp)).padding(14.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    Text(if (indice > 0) "AHORA TU OJO ${ojoActual.nombre.uppercase()}" else "ANTES DE EMPEZAR",
+                        style = Hud.etiqueta.copy(fontSize = 10.sp, color = Colores.cian))
+                    val pasos = if (modo == Modo.ANEMIA) listOf(
+                        "Busca luz blanca de día (ventana), sin flash ni foco amarillo.",
+                        "Lávate las manos y jala tu párpado de abajo con un dedo.",
+                        "Acerca el teléfono a unos 10 cm del ojo ${ojoActual.nombre}.",
+                        "Mira hacia arriba, al punto, sin parpadear.",
+                    ) else listOf(
+                        "Quítate los lentes y busca luz de frente (ventana o foco), sin flash.",
+                        "Acerca el teléfono a unos 10 cm del ojo ${ojoActual.nombre}.",
+                        "Abre bien el ojo y mira el punto de arriba.",
+                        "Cuando todo esté en verde, quédate quieto 3 segundos.",
+                    )
+                    pasos.forEachIndexed { i, t -> Text("${i + 1}. $t", color = Colores.texto, fontSize = 14.sp, lineHeight = 18.sp) }
+                    BotonNeon("Estoy listo", { listoUsuario = true; preparando = 3 }, Modifier.fillMaxWidth())
+                }
             } else Text(
-                "Captura automática cuando todo está en verde.",
+                "Captura automática: cuando todo esté en verde, quédate quieto 3 segundos.",
                 style = Hud.dato.copy(fontSize = 10.sp, color = Colores.textoSuave),
                 textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth(),
             )
@@ -567,3 +606,7 @@ private fun MarcoEncia(revisando: Boolean, cuenta: Int, modifier: Modifier) {
         }
     }
 }
+
+
+/** Tiempo que el ojo debe quedarse bien (todo en verde) antes de la foto automática. */
+private const val SOSTENER_MS = 3000L
