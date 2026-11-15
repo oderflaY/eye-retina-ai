@@ -68,6 +68,9 @@ import com.temrarios.ojoscan.historial.FuenteHistorial
 import com.temrarios.ojoscan.historial.paraServidor
 import com.temrarios.ojoscan.platform.EscuchaAcelerometro
 import com.temrarios.ojoscan.platform.rememberBoveda
+import com.temrarios.ojoscan.platform.rememberLectorAssets
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import com.temrarios.ojoscan.platform.rememberVoz
 import com.temrarios.ojoscan.pulso.EstadoPulso
 import com.temrarios.ojoscan.pulso.MonitorPulso
@@ -93,7 +96,7 @@ fun Triage.color(): Color = when (this) {
 }
 
 /** Módulos que se abren encima del tablero (sin pestañas). */
-enum class Modulo { PPG, PVT, IMU, MANUALES, VOZ, SISTEMA, FARMACIA, SOS, IA }
+enum class Modulo { PPG, PVT, IMU, MANUALES, VOZ, SISTEMA, FARMACIA, SOS, IA, DIARIO }
 
 @Composable
 fun AstroPulseMainScreen(
@@ -112,6 +115,10 @@ fun AstroPulseMainScreen(
     var manualPedido by remember { mutableStateOf<String?>(null) }
     val boveda = rememberBoveda()
     val voz = rememberVoz()
+    val assets = rememberLectorAssets()
+
+    // Base de primeros auxilios del diario (≈5 800 procedimientos): se indexa en segundo plano.
+    LaunchedEffect(Unit) { withContext(Dispatchers.Default) { assets.leer("primeros_auxilios.json")?.let(motor::cargarBase) } }
 
     // Caja negra inercial: escucha siempre, no solo con el módulo abierto.
     EscuchaAcelerometro(true) { x, y, z -> motor.muestraImu(x, y, z) }
@@ -141,6 +148,7 @@ fun AstroPulseMainScreen(
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
             Cabecera(tm.entorno, motor::cambiarEntorno)
+            TarjetaDiario(motor) { abierto = Modulo.DIARIO }
             TarjetaAnemia(tm, alAnemia, alChequeoCompleto)
             Resumen(tm, estadoPulso)
             val modulos = listOf(
@@ -179,6 +187,7 @@ fun AstroPulseMainScreen(
                 Modulo.PPG -> "Biometría PPG"; Modulo.PVT -> "Test Cognitivo PVT"; Modulo.IMU -> "Caja Negra Inercial"
                 Modulo.MANUALES -> "Manuales Médicos Offline"; Modulo.VOZ -> "Bitácora de Voz"; Modulo.SISTEMA -> "Estado del Sistema"
                 Modulo.FARMACIA -> "Matriz Farmacéutica & Radiación"; Modulo.SOS -> "Baliza SOS"; Modulo.IA -> "IA Asistente (CDSS offline)"
+                Modulo.DIARIO -> "Diario de Salud · Semáforo"
             }, alCerrar = { abierto = null; manualPedido = null }) {
                 when (m) {
                     Modulo.PPG -> PanelPpg(motor, alIaCardiaca, alEscaneos)
@@ -190,6 +199,7 @@ fun AstroPulseMainScreen(
                     Modulo.FARMACIA -> PanelFarmacia(tm)
                     Modulo.SOS -> PanelSos(motor)
                     Modulo.IA -> PanelIa(motor) { id -> manualPedido = id; abierto = Modulo.MANUALES }
+                    Modulo.DIARIO -> PanelDiario(motor)
                 }
             }
         }

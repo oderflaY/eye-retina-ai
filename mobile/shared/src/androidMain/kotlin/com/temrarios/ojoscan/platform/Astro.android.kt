@@ -244,3 +244,16 @@ actual fun rememberDispositivo(): Dispositivo {
     val ctx = LocalContext.current.applicationContext
     return remember { DispositivoAndroid(ctx) }
 }
+
+@Composable
+actual fun rememberLectorAssets(): LectorAssets {
+    val ctx = LocalContext.current.applicationContext
+    return remember {
+        object : LectorAssets {
+            override fun leer(nombre: String): String? =
+                runCatching { ctx.assets.open(nombre).bufferedReader(Charsets.UTF_8).use { it.readText() } }.getOrNull()
+        }
+    }
+}
+
+actual fun desfaseHorarioMs(horaMs: Long): Long = java.util.TimeZone.getDefault().getOffset(horaMs).toLong()

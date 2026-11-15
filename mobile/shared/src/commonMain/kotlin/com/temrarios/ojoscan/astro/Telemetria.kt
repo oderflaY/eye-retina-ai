@@ -103,6 +103,8 @@ data class MissionTelemetry(
     /** Pulso en reposo de 30 días (pulsera vía Health Connect). */
     val pulsoReposo: Double? = null,
     val estres: Triage = Triage.SIN_DATOS,
+    /** Semáforo del diario de salud (última entrada de las últimas 12 h). */
+    val diario: Triage = Triage.SIN_DATOS,
     val triageSpo2: Triage = Triage.SIN_DATOS,
     val triageImu: Triage = Triage.NOMINAL,
     val triage: Triage = Triage.SIN_DATOS,

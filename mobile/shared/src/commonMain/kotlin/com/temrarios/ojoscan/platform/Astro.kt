@@ -50,3 +50,14 @@ interface Dispositivo {
 
 @Composable
 expect fun rememberDispositivo(): Dispositivo
+
+/** Archivos de texto empaquetados con la app (p. ej. la base de primeros auxilios). Leer fuera del hilo principal. */
+interface LectorAssets {
+    fun leer(nombre: String): String?
+}
+
+@Composable
+expect fun rememberLectorAssets(): LectorAssets
+
+/** Desfase de la zona horaria local respecto a UTC en esa hora (ms), para agrupar el diario por día local. */
+expect fun desfaseHorarioMs(horaMs: Long): Long

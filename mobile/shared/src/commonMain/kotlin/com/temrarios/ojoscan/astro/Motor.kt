@@ -3,12 +3,15 @@ package com.temrarios.ojoscan.astro
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.temrarios.ojoscan.platform.Almacen
+import com.temrarios.ojoscan.platform.desfaseHorarioMs
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.serialization.builtins.ListSerializer
+import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.add
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
@@ -35,6 +38,15 @@ class AstroPulseEngine(private val almacen: Almacen, private val reloj: () -> Lo
     private val _chat = MutableStateFlow(listOf(Mensaje(false,
         "Asistente de a bordo en línea, sin conexión a la Tierra. Dime qué sientes o pregúntame por un fármaco, la radiación o tu estado.")))
     val chat: StateFlow<List<Mensaje>> = _chat.asStateFlow()
+
+    // ── Diario de salud con semáforo + RAG de primeros auxilios ──
+    private val _diario = MutableStateFlow(diarioGuardado())
+    val diario: StateFlow<List<EntradaDiario>> = _diario.asStateFlow()
+    private val _evaluacion = MutableStateFlow<Pair<Evaluacion, List<Recuperado>>?>(null)
+    /** Última evaluación del semáforo con los procedimientos recuperados. */
+    val evaluacion: StateFlow<Pair<Evaluacion, List<Recuperado>>?> = _evaluacion.asStateFlow()
+    private val _base = MutableStateFlow<BaseAuxilios?>(null)
+    val base: StateFlow<BaseAuxilios?> = _base.asStateFlow()
 
     val pvt = MotorPvt()
     private val imu = DetectorImpactos()
@@ -121,6 +133,41 @@ class AstroPulseEngine(private val almacen: Almacen, private val reloj: () -> Lo
         })
     }
 
+    /** Carga la base de primeros auxilios (JSON del asset). Llamar fuera del hilo principal: indexa ~5 800 documentos. */
+    fun cargarBase(json: String) {
+        if (_base.value == null) _base.value = runCatching { BaseAuxilios.desdeJson(json) }.getOrNull()
+    }
+
+    fun buscarAuxilios(consulta: String, k: Int = 3): List<Recuperado> = _base.value?.buscar(consulta, k).orEmpty()
+
+    /** Guarda lo que escribió la persona, lo pasa por el semáforo y recupera qué hacer. */
+    fun escribirDiario(texto: String, animo: Int?): Evaluacion? {
+        if (texto.isBlank() && animo == null) return null
+        val ahora = reloj()
+        val tm = _estado.value
+        val ev = Semaforo.evaluar(texto, animo, _diario.value, tm, ahora, ::diaLocal)
+        val docs = if (ev.sintomas.isEmpty()) emptyList() else _base.value?.paraDiario(ev.consulta, texto).orEmpty()
+        val e = EntradaDiario(ahora, texto.trim(), animo, ev.triage, ev.motivos, ev.sintomas, tm.pulso, tm.spo2)
+        _diario.update { (it + e).takeLast(400) }
+        almacen.guardar("diario_v1", jsonDiario.encodeToString(ListSerializer(EntradaDiario.serializer()), _diario.value))
+        _evaluacion.value = ev to docs
+        recalcular { it }
+        return ev
+    }
+
+    fun borrarEntradaDiario(horaMs: Long) {
+        _diario.update { l -> l.filterNot { it.horaMs == horaMs } }
+        almacen.guardar("diario_v1", jsonDiario.encodeToString(ListSerializer(EntradaDiario.serializer()), _diario.value))
+        recalcular { it }
+    }
+
+    /** Número de día en la zona horaria del teléfono. */
+    fun diaLocal(ms: Long): Long = (ms + desfaseHorarioMs(ms)).floorDiv(DIA_MS)
+
+    private fun diarioGuardado(): List<EntradaDiario> = almacen.leer("diario_v1")?.let {
+        runCatching { jsonDiario.decodeFromString(ListSerializer(EntradaDiario.serializer()), it) }.getOrNull()
+    }.orEmpty()
+
     fun pulsoReposo(lpm: Double?) { if (lpm != null) recalcular { it.copy(pulsoReposo = lpm) } }
 
     private fun anemiasGuardadas(): Map<String, LecturaAnemia> = almacen.leer("astro_anemias").orEmpty().lines().mapNotNull { linea ->
@@ -140,7 +187,7 @@ class AstroPulseEngine(private val almacen: Almacen, private val reloj: () -> Lo
     // ── Asistente ────────────────────────────────────────────────────────────
     fun preguntar(texto: String) {
         if (texto.isBlank()) return
-        val r = Cdss.responder(texto, _estado.value)
+        val r = Cdss.responder(texto, _estado.value, _base.value)
         _chat.update { it + Mensaje(true, texto.trim()) + r }
     }
 
@@ -191,7 +238,11 @@ class AstroPulseEngine(private val almacen: Almacen, private val reloj: () -> Lo
         val combinada = FusionAnemia.combinar(t.anemias.values, t.pulsoReposo, ahora,
             pulsoAnormal = pulso == Triage.ADVERTENCIA || pulso == Triage.CRITICO)
         val anemia = combinada?.triage ?: Triage.SIN_DATOS
-        val general = Triage.peor(spo2, pulso, imu, estres, anemia).let { if (it == Triage.SIN_DATOS) Triage.NOMINAL else it }
-        return t.copy(anemia = combinada, triageSpo2 = spo2, triageImu = imu, estres = estres, triage = general)
+        // Diario: la última entrada de las últimas 12 h
+        val diario = _diario.value.lastOrNull()?.takeIf { ahora - it.horaMs < 12 * 3_600_000L }?.triage ?: Triage.SIN_DATOS
+        val general = Triage.peor(spo2, pulso, imu, estres, anemia, diario).let { if (it == Triage.SIN_DATOS) Triage.NOMINAL else it }
+        return t.copy(diario = diario, anemia = combinada, triageSpo2 = spo2, triageImu = imu, estres = estres, triage = general)
     }
 }
+
+private val jsonDiario = Json { ignoreUnknownKeys = true; encodeDefaults = false }

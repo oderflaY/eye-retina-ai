@@ -14,7 +14,7 @@ object Cdss {
 
     val sugerencias = listOf("¿Cómo estoy?", "Tengo mareo", "¿Tengo anemia?", "Dolor de pecho", "¿Sirve la prometazina?", "Radiación de hoy")
 
-    fun responder(pregunta: String, tm: MissionTelemetry): Mensaje {
+    fun responder(pregunta: String, tm: MissionTelemetry, base: BaseAuxilios? = null): Mensaje {
         val t = normalizar(pregunta).trim()
         if (t.isEmpty()) return Mensaje(false, "Escribe lo que sientes o lo que necesitas saber.")
 
@@ -97,6 +97,14 @@ object Cdss {
                 .joinToString("\n") { "  · ${it.farmaco.nombre}: ${if (it.triage == Triage.CRITICO) "CADUCADO por radiación" else "${it.diasRestantes} d, ${it.potencia} %"}" }
             return Mensaje(false, "«${m.titulo}»\n" + m.pasos.mapIndexed { i, p -> "${i + 1}. $p" }.joinToString("\n") + extra +
                 (if (farm.isNotEmpty()) "\nFármacos del botiquín:\n$farm" else "") + contextoVital(tm), tr, m.id)
+        }
+
+        // 9. Base de primeros auxilios (RAG): la respuesta tal cual viene de la fuente
+        base?.buscar(pregunta, 2)?.takeIf { it.isNotEmpty() }?.let { docs ->
+            val ev = Semaforo.evaluar(pregunta, tm = tm)
+            return Mensaje(false, docs.joinToString("\n\n") { r ->
+                "«${r.doc.pregunta}»\n${r.doc.respuesta}\n(Fuente: ${r.doc.etiquetaFuente})"
+            } + "\n\n${ev.accion}", Triage.peor(ev.triage, Triage.NOMINAL))
         }
 
         return Mensaje(false, "No reconocí el síntoma. Puedes preguntarme por: dolor de pecho, falta de aire, mareo, golpes, " +

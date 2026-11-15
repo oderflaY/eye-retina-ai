@@ -53,3 +53,12 @@ actual fun rememberDispositivo(): Dispositivo = remember {
         override fun sensores() = listOf("Sensores de iPhone (pendiente)" to false)
     }
 }
+
+@Composable
+actual fun rememberLectorAssets(): LectorAssets = remember {
+    // Pendiente: leer del bundle de iOS (NSBundle). Sin base, el diario usa solo el semáforo.
+    object : LectorAssets { override fun leer(nombre: String): String? = null }
+}
+
+// Pendiente en iOS: NSTimeZone.localTimeZone. Mientras, el diario agrupa por día UTC.
+actual fun desfaseHorarioMs(horaMs: Long): Long = 0L
