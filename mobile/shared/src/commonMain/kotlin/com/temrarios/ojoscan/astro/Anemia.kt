@@ -8,9 +8,13 @@ import kotlin.math.roundToInt
 data class FuenteAnemia(val nombre: String, val probabilidad: Double?, val peso: Double, val detalle: String)
 
 /** Probabilidad única de anemia juntando todas las mediciones. */
-data class AnemiaCombinada(val probabilidad: Double, val fuentes: List<FuenteAnemia>, val triage: Triage) {
+data class AnemiaCombinada(val probabilidad: Double, val fuentes: List<FuenteAnemia>, val triage: Triage,
+                           val veredicto: Veredicto = Veredicto("", "", "", emptyList())) {
     val porcentaje get() = (probabilidad * 100).roundToInt()
 }
+
+/** Conclusión final a partir de los tres análisis (párpado, palma, encía). */
+data class Veredicto(val titulo: String, val explicacion: String, val recomendacion: String, val faltan: List<String>)
 
 /**
  * Junta los tamizajes de anemia en UNA probabilidad.
@@ -73,6 +77,40 @@ object FusionAnemia {
             p >= 0.5 -> Triage.ADVERTENCIA
             else -> Triage.NOMINAL
         }
-        return AnemiaCombinada(p, fuentes.sortedByDescending { it.peso }, t)
+        val porMetodo = vigentes.groupBy { it.metodo }.mapValues { (_, v) -> v.maxBy { it.horaMs }.probabilidad!! }
+        return AnemiaCombinada(p, fuentes.sortedByDescending { it.peso }, t, veredicto(p, porMetodo))
+    }
+
+    /** Veredicto a partir de la probabilidad combinada y de qué tanto coinciden los análisis. */
+    fun veredicto(p: Double, porMetodo: Map<String, Double>): Veredicto {
+        val faltan = listOf("párpado", "palma", "encía").filter { it !in porMetodo }
+        val parpado = porMetodo["párpado"]
+        val palma = porMetodo["palma"]
+        val validados = listOfNotNull(parpado, palma)
+        val contradicen = parpado != null && palma != null &&
+            (parpado >= 0.65 && palma < 0.35 || palma >= 0.65 && parpado < 0.35)
+        val coinciden = validados.size == 2 && !contradicen
+        val base = when {
+            contradicen -> Veredicto("Resultados contradictorios",
+                "El párpado y la palma no coinciden (${(parpado!! * 100).roundToInt()} % contra ${(palma!! * 100).roundToInt()} %). " +
+                    "Suele pasar por la luz o el encuadre.",
+                "Repite las dos fotos con luz de día, sin flash. Si siguen sin coincidir, hazte una biometría hemática.", faltan)
+            p >= 0.65 -> Veredicto("Probable anemia",
+                if (coinciden) "El párpado y la palma coinciden en palidez." else "La palidez es clara en lo que se midió.",
+                "Hazte una biometría hemática (hemoglobina) en los próximos días.", faltan)
+            p >= 0.5 -> Veredicto("Posible anemia",
+                "Hay algo de palidez, pero no es concluyente.",
+                "Confírmalo con una biometría hemática.", faltan)
+            p >= 0.35 -> Veredicto("Dudoso",
+                "El color quedó en un punto intermedio.",
+                "Repite las fotos con luz de día; si vuelve a salir así, hazte una biometría hemática.", faltan)
+            else -> Veredicto("Sin signos de anemia",
+                if (coinciden) "El párpado y la palma tienen buena coloración." else "Lo que se midió tiene buena coloración.",
+                "No hace falta nada más por ahora. Repite el tamizaje en un mes.", faltan)
+        }
+        return if (validados.size < 2 && !contradicen)
+            base.copy(titulo = base.titulo + " (preliminar)",
+                explicacion = base.explicacion + " Falta " + (if (parpado == null) "el párpado" else "la palma") + " para confirmarlo.")
+        else base
     }
 }

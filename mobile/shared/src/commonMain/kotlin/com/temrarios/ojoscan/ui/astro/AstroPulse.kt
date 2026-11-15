@@ -348,10 +348,6 @@ private fun TarjetaModulo(icono: ImageVector, titulo: String, sub: String, t: Tr
 private fun TarjetaAnemia(tm: MissionTelemetry, alAnemia: (Modo) -> Unit, alCompleto: () -> Unit) {
     val a = tm.anemia
     val t = a?.triage ?: Triage.SIN_DATOS
-    val veredicto = when (t) {
-        Triage.CRITICO -> "Probabilidad ALTA"; Triage.ADVERTENCIA -> "Probabilidad MEDIA"
-        Triage.NOMINAL -> "Probabilidad BAJA"; Triage.SIN_DATOS -> "Sin medir todavía"
-    }
     Vidrio(Modifier.fillMaxWidth(), borde = (if (a != null) t.color() else Cabina.acento).copy(alpha = 0.8f)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Icon(Ico.gota, null, tint = Cabina.rojo, modifier = Modifier.size(30.dp))
@@ -361,17 +357,34 @@ private fun TarjetaAnemia(tm: MissionTelemetry, alAnemia: (Modo) -> Unit, alComp
         Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
             Text(if (a != null) "${a.porcentaje} %" else "— %",
                 style = Cabina.mono.copy(fontSize = 72.sp, color = if (a != null) t.color() else Cabina.suave, fontWeight = FontWeight.Black))
-            Text(veredicto, color = if (a != null) t.color() else Cabina.suave, fontWeight = FontWeight.Bold, fontSize = 18.sp)
-            Text(if (a != null) "de tener anemia" else "Mide tu párpado, palma o encía", color = Cabina.suave, fontSize = 13.sp)
+            Text(if (a != null) "de probabilidad de anemia" else "Mide tu párpado, palma y encía", color = Cabina.suave, fontSize = 13.sp)
         }
         Box(Modifier.fillMaxWidth().height(14.dp).clip(RoundedCornerShape(7.dp)).background(Color(0x14FFFFFF))) {
             if (a != null) Box(Modifier.fillMaxWidth(a.probabilidad.toFloat().coerceIn(0.02f, 1f)).height(14.dp)
                 .clip(RoundedCornerShape(7.dp)).background(t.color()))
         }
+        // Los tres análisis
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Chip("Párpado", Modifier.weight(1f)) { alAnemia(Modo.ANEMIA) }
-            Chip("Palma", Modifier.weight(1f)) { alAnemia(Modo.PALMA) }
-            Chip("Encía", Modifier.weight(1f)) { alAnemia(Modo.ENCIA) }
+            for ((nombre, metodo, modo) in listOf(Triple("Párpado", "Párpado", Modo.ANEMIA), Triple("Palma", "Palma", Modo.PALMA), Triple("Encía", "Encía", Modo.ENCIA))) {
+                val f = a?.fuentes?.firstOrNull { it.nombre == metodo }
+                val c = f?.probabilidad?.let { if (it >= 0.65) Cabina.rojo else if (it >= 0.35) Triage.ADVERTENCIA.color() else Triage.NOMINAL.color() } ?: Cabina.acento
+                Column(Modifier.weight(1f).clip(RoundedCornerShape(12.dp)).background(c.copy(alpha = 0.1f))
+                    .border(1.dp, c.copy(alpha = 0.45f), RoundedCornerShape(12.dp)).clickable { alAnemia(modo) }.padding(vertical = 8.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(nombre, color = Cabina.texto, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                    Text(f?.probabilidad?.let { "${(it * 100).roundToInt()} %" } ?: "Medir", style = Cabina.mono.copy(fontSize = 15.sp, color = c, fontWeight = FontWeight.Bold))
+                }
+            }
+        }
+        // Veredicto
+        if (a != null) Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(t.color().copy(alpha = 0.12f)).padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Etiqueta("VEREDICTO")
+            Text(a.veredicto.titulo, color = t.color(), fontWeight = FontWeight.Black, fontSize = 20.sp)
+            Text(a.veredicto.explicacion, color = Cabina.texto, fontSize = 13.sp, lineHeight = 17.sp)
+            Text("→ " + a.veredicto.recomendacion, color = Cabina.texto, fontWeight = FontWeight.SemiBold, fontSize = 13.sp, lineHeight = 17.sp)
+            if (a.veredicto.faltan.isNotEmpty()) Text("Falta medir: " + a.veredicto.faltan.joinToString(", "), color = Cabina.suave, fontSize = 11.sp)
+            Text("Tamizaje, no diagnóstico: la anemia se confirma con un análisis de sangre.", color = Cabina.suave, fontSize = 10.sp)
         }
     }
 }

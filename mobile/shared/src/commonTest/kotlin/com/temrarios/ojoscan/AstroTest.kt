@@ -125,3 +125,26 @@ class FusionAnemiaTest {
         assertNull(com.temrarios.ojoscan.astro.FusionAnemia.combinar(listOf(l("palma", 0.9)), null, 1000L + 31L * 86_400_000L))
     }
 }
+
+class VeredictoAnemiaTest {
+    private val f = com.temrarios.ojoscan.astro.FusionAnemia
+
+    @Test
+    fun tresCoincidenEnPalidez() {
+        val v = f.veredicto(0.8, mapOf("párpado" to 0.8, "palma" to 0.75, "encía" to 0.7))
+        assertEquals("Probable anemia", v.titulo)
+        assertTrue(v.faltan.isEmpty())
+    }
+
+    @Test
+    fun contradiccionPideRepetir() {
+        assertEquals("Resultados contradictorios", f.veredicto(0.5, mapOf("párpado" to 0.85, "palma" to 0.2)).titulo)
+    }
+
+    @Test
+    fun soloUnaEsPreliminar() {
+        val v = f.veredicto(0.2, mapOf("párpado" to 0.2))
+        assertEquals("Sin signos de anemia (preliminar)", v.titulo)
+        assertEquals(listOf("palma", "encía"), v.faltan)
+    }
+}
