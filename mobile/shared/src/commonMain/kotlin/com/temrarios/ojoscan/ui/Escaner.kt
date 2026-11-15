@@ -17,6 +17,9 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.graphics.drawscope.rotate
 import com.temrarios.ojoscan.guia.Lectura
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.drawText
+import androidx.compose.ui.text.rememberTextMeasurer
 import com.temrarios.ojoscan.guia.Umbrales
 import kotlin.math.PI
 import kotlin.math.cos
@@ -173,7 +176,9 @@ fun PantallaEscaner(
         )
 
         if (palma) MarcoPalma(revisando, cuenta, Modifier.fillMaxSize())
-        else if (rostro) MarcoRostro(revisando, cuenta, Modifier.fillMaxSize()) else VisorHud(guia, revisando, Modifier.fillMaxSize())
+        else if (encia) MarcoEncia(revisando, cuenta, Modifier.fillMaxSize())
+        else if (rostro) MarcoRostro(revisando, cuenta, Modifier.fillMaxSize())
+        else VisorHud(guia, revisando, ultima, modo, espejo = !ajustes.trasera, Modifier.fillMaxSize())
 
         Column(Modifier.fillMaxSize().safeDrawingPadding().padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             // ── Barra superior ──
@@ -226,6 +231,10 @@ fun PantallaEscaner(
                 palma -> "Pon la palma abierta dentro del recuadro, con luz de día"
                 encia -> "Dientes juntos y sonríe enseñando la encía de arriba"
                 rostro -> "Pon tu cara dentro del óvalo, de frente y sin lentes oscuros"
+                guia.aviso == Aviso.CENTRA -> "Lleva tu ojo a la cruz: sigue la flecha"
+                guia.aviso == Aviso.ACERCATE -> "Acércate un poco (mira la barra)"
+                guia.aviso == Aviso.ALEJATE -> "Aléjate un poco (mira la barra)"
+                !ajustes.trasera && guia.aviso == Aviso.ABRE_OJO -> "Abre bien el ojo y mira el punto"
                 else -> guia.aviso.texto
             }
             val color = when {
@@ -306,7 +315,9 @@ private fun Telemetria(l: Lectura?, modo: Modo) {
  * corchetes de mira, anillo de graduación que gira, línea de barrido y progreso de la captura.
  */
 @Composable
-private fun VisorHud(guia: Guia, revisando: Boolean, modifier: Modifier) {
+private fun VisorHud(guia: Guia, revisando: Boolean, lectura: Lectura?, modo: Modo, espejo: Boolean, modifier: Modifier) {
+    val u = remember { Umbrales() }
+    val medidor = rememberTextMeasurer()
     val color by animateColorAsState(
         when {
             revisando || guia.aviso.bueno -> Colores.bien
@@ -374,6 +385,80 @@ private fun VisorHud(guia: Guia, revisando: Boolean, modifier: Modifier) {
         val cc = 8.dp.toPx()
         drawLine(color.copy(alpha = 0.7f), Offset(c.x - cc, c.y), Offset(c.x + cc, c.y), 1.dp.toPx())
         drawLine(color.copy(alpha = 0.7f), Offset(c.x, c.y - cc), Offset(c.x, c.y + cc), 1.dp.toPx())
+        // ── Anemia: dónde debe quedar el párpado rosado (abajo del ojo) ──
+        if (modo == Modo.ANEMIA) {
+            val zona = Rect(c.x - ancho * 0.30f, c.y + alto * 0.12f, c.x + ancho * 0.30f, c.y + alto * 0.42f)
+            drawArc(Colores.magenta.copy(alpha = 0.18f), 0f, 180f, true, Offset(zona.left, zona.top - zona.height), Size(zona.width, zona.height * 2))
+            drawArc(Colores.magenta.copy(alpha = 0.8f), 0f, 180f, false, Offset(zona.left, zona.top - zona.height), Size(zona.width, zona.height * 2),
+                style = Stroke(2.dp.toPx(), pathEffect = androidx.compose.ui.graphics.PathEffect.dashPathEffect(floatArrayOf(12f, 9f))))
+            val t = medidor.measure("párpado rosado aquí", TextStyle(color = Colores.magenta, fontSize = 11.sp, fontWeight = FontWeight.Bold))
+            drawText(t, topLeft = Offset(c.x - t.size.width / 2, zona.bottom + 4.dp.toPx()))
+        }
+
+        // ── Dónde ve la cámara el ojo ahora (mismo recorte que la vista previa: cuadro 3:4 llenando la pantalla) ──
+        val l0 = lectura
+        if (l0 != null && l0.ojoVisible && !revisando) {
+            val esc = maxOf(size.width / 3f, size.height / 4f)
+            val fw = 3f * esc; val fh = 4f * esc
+            val ex = (size.width - fw) / 2 + (if (espejo) 1f - l0.ojoX else l0.ojoX) * fw
+            val ey = (size.height - fh) / 2 + l0.ojoY * fh
+            val ojo = Offset(ex, ey)
+            val anchoVisto = (l0.anchoOjo * fw).coerceIn(24.dp.toPx(), size.width)
+            val centrado = kotlin.math.abs(l0.ojoX - 0.5f) <= u.desvioCentro && kotlin.math.abs(l0.ojoY - 0.5f) <= u.desvioCentro
+            val cm = if (centrado) Colores.bien else Colores.atencion
+            drawOval(cm.copy(alpha = 0.9f), Offset(ex - anchoVisto / 2, ey - anchoVisto * 0.25f), Size(anchoVisto, anchoVisto * 0.5f),
+                style = Stroke(2.dp.toPx(), pathEffect = androidx.compose.ui.graphics.PathEffect.dashPathEffect(floatArrayOf(14f, 10f))))
+            drawCircle(cm, 4.dp.toPx(), ojo)
+            // flecha del ojo hacia la cruz cuando falta centrar
+            val d = c - ojo
+            val dist = d.getDistance()
+            if (!centrado && dist > 30.dp.toPx()) {
+                val dir = d / dist
+                val ini = ojo + dir * 14.dp.toPx()
+                val fin = c - dir * 14.dp.toPx()
+                drawLine(cm, ini, fin, 4.dp.toPx(), cap = StrokeCap.Round)
+                val pun = 16.dp.toPx()
+                val nrm = Offset(-dir.y, dir.x)
+                val ruta = androidx.compose.ui.graphics.Path().apply {
+                    moveTo(fin.x + dir.x * 6.dp.toPx(), fin.y + dir.y * 6.dp.toPx())
+                    lineTo(fin.x - dir.x * pun + nrm.x * pun * 0.6f, fin.y - dir.y * pun + nrm.y * pun * 0.6f)
+                    lineTo(fin.x - dir.x * pun - nrm.x * pun * 0.6f, fin.y - dir.y * pun - nrm.y * pun * 0.6f)
+                    close()
+                }
+                drawPath(ruta, cm)
+            }
+            // barra de distancia a la derecha del óvalo: franja verde = distancia buena
+            val bx = size.width - 14.dp.toPx()
+            val bTop = ovalo.top; val bAlto = ovalo.height
+            val maxA = u.anchoMax * 1.6f
+            fun yDe(a: Float) = bTop + bAlto * (1f - (a / maxA).coerceIn(0f, 1f))
+            drawLine(Color(0x55FFFFFF), Offset(bx, bTop), Offset(bx, bTop + bAlto), 6.dp.toPx(), cap = StrokeCap.Round)
+            drawLine(Colores.bien.copy(alpha = 0.7f), Offset(bx, yDe(u.anchoMax)), Offset(bx, yDe(u.anchoMin)), 6.dp.toPx(), cap = StrokeCap.Round)
+            val enRango = l0.anchoOjo in u.anchoMin..u.anchoMax
+            val ym = yDe(l0.anchoOjo)
+            drawCircle(if (enRango) Colores.bien else Colores.atencion, 7.dp.toPx(), Offset(bx, ym))
+            drawCircle(Color.White, 7.dp.toPx(), Offset(bx, ym), style = Stroke(1.5.dp.toPx()))
+            val tc = medidor.measure("CERCA", TextStyle(color = Colores.textoSuave, fontSize = 8.sp))
+            drawText(tc, topLeft = Offset(bx - tc.size.width / 2, bTop - tc.size.height - 4.dp.toPx()))
+            val tl = medidor.measure("LEJOS", TextStyle(color = Colores.textoSuave, fontSize = 8.sp))
+            drawText(tl, topLeft = Offset(bx - tl.size.width / 2, bTop + bAlto + 4.dp.toPx()))
+        }
+
+        // ── Punto para fijar la mirada (con la cámara de enfrente: arriba del óvalo, rumbo a la cámara) ──
+        if (espejo) {
+            val pm = Offset(c.x, ovalo.top - 64.dp.toPx())
+            val listo = guia.aviso.bueno || revisando
+            val cp = if (listo) Colores.bien else Color.White
+            val r0 = 7.dp.toPx()
+            drawCircle(cp.copy(alpha = 0.35f * (1f - pulso)), r0 * (1.6f + 1.8f * pulso), pm)
+            drawCircle(cp.copy(alpha = 0.6f), r0 * 1.9f, pm, style = Stroke(1.5.dp.toPx()))
+            drawCircle(if (listo) Colores.bien else Colores.magenta, r0, pm)
+            drawCircle(Color.White, r0 * 0.35f, pm)
+            val txt = if (modo == Modo.ANEMIA) "MIRA EL PUNTO (hacia arriba)" else "MIRA EL PUNTO"
+            val tm = medidor.measure(txt, TextStyle(color = cp, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp))
+            drawText(tm, topLeft = Offset(pm.x - tm.size.width / 2, pm.y + r0 * 2.4f))
+        }
+
         // progreso de la captura
         if (progreso > 0f) {
             val g = 8.dp.toPx()
@@ -444,6 +529,41 @@ private fun MarcoPalma(revisando: Boolean, cuenta: Int, modifier: Modifier) {
                                    Triple(ext.bottomLeft, 1f, -1f), Triple(ext.bottomRight, -1f, -1f))) {
             drawLine(color, p, Offset(p.x + l * dx, p.y), 3.dp.toPx(), cap = StrokeCap.Round)
             drawLine(color, p, Offset(p.x, p.y + l * dy), 3.dp.toPx(), cap = StrokeCap.Round)
+        }
+    }
+}
+
+
+/** Marco para la encía: ventana ancha en forma de boca con la línea de los dientes y la zona que se mide. */
+@Composable
+private fun MarcoEncia(revisando: Boolean, cuenta: Int, modifier: Modifier) {
+    val t = rememberInfiniteTransition()
+    val barrido by t.animateFloat(0f, 1f, infiniteRepeatable(tween(2000, easing = LinearEasing), RepeatMode.Reverse))
+    val color by animateColorAsState(if (revisando || cuenta > 0) Colores.bien else Colores.magenta)
+    val medidor = rememberTextMeasurer()
+    Canvas(modifier) {
+        val w = size.width * 0.84f
+        val h = w * 0.55f
+        val tl = Offset((size.width - w) / 2, size.height * 0.45f - h / 2)
+        val caja = Rect(tl, Size(w, h))
+        val ruta = androidx.compose.ui.graphics.Path().apply {
+            addRoundRect(androidx.compose.ui.geometry.RoundRect(caja, androidx.compose.ui.geometry.CornerRadius(h / 2)))
+        }
+        clipPath(ruta, clipOp = androidx.compose.ui.graphics.ClipOp.Difference) { drawRect(Colores.fondo.copy(alpha = 0.55f)) }
+        drawPath(ruta, color, style = Stroke(3.dp.toPx()))
+        // línea donde se juntan los dientes (a media altura) y la encía de arriba encima
+        val yd = caja.top + h * 0.62f
+        drawLine(color.copy(alpha = 0.7f), Offset(caja.left + h * 0.3f, yd), Offset(caja.right - h * 0.3f, yd), 2.dp.toPx(),
+            pathEffect = androidx.compose.ui.graphics.PathEffect.dashPathEffect(floatArrayOf(12f, 9f)))
+        val zona = Rect(caja.left + w * 0.22f, caja.top + h * 0.12f, caja.right - w * 0.22f, caja.top + h * 0.36f)
+        drawRoundRect(color.copy(alpha = 0.18f), zona.topLeft, zona.size, androidx.compose.ui.geometry.CornerRadius(12.dp.toPx()))
+        val et = medidor.measure("encía de arriba aquí", TextStyle(color = color, fontSize = 11.sp, fontWeight = FontWeight.Bold))
+        drawText(et, topLeft = Offset(caja.center.x - et.size.width / 2, zona.center.y - et.size.height / 2))
+        val dt = medidor.measure("dientes juntos", TextStyle(color = color.copy(alpha = 0.8f), fontSize = 10.sp))
+        drawText(dt, topLeft = Offset(caja.center.x - dt.size.width / 2, yd + 4.dp.toPx()))
+        clipPath(ruta) {
+            val y = tl.y + h * barrido
+            drawLine(color.copy(alpha = 0.6f), Offset(tl.x, y), Offset(tl.x + w, y), 2.dp.toPx())
         }
     }
 }
