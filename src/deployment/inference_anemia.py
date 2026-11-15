@@ -125,7 +125,7 @@ class SegmentadorConjuntiva:
         return (p + q) / 2
 
 
-def extraer(seg: SegmentadorConjuntiva, image_rgb: np.ndarray) -> dict[str, Any]:
+def extraer(seg: SegmentadorConjuntiva, image_rgb: np.ndarray, balance: bool = True) -> dict[str, Any]:
     """Segmenta y mide. ``image_rgb`` uint8 de cualquier tamaño."""
     img, util = letterbox(image_rgb)
     rgb = img.astype(np.float32) / 255.0
@@ -138,7 +138,7 @@ def extraer(seg: SegmentadorConjuntiva, image_rgb: np.ndarray) -> dict[str, Any]
         return out
     blanco, n_blanco = blanco_de_referencia(rgb, conj, util)
     out.update(valida=True, blanco=blanco.round(4).tolist(), pixeles_blanco=n_blanco,
-               medidas=medir_color(rgb, conj, blanco))
+               medidas=medir_color(rgb, conj, blanco if balance else np.ones(3, np.float32)))
     return out
 
 
@@ -155,9 +155,11 @@ class AnalizadorAnemia:
         self.zona = tuple(paquete.get("zona_gris", (self.umbral, self.umbral)))
         self.cv = paquete.get("validacion", {})
         self.nombre = Path(clf_path).parent.name
+        # v3 (2026-11-15): el modelo se entrenó sin balance de blancos (mejor en Eyes-Defy con Hb real)
+        self.balance = bool(paquete.get("balance_blancos", True))
 
     def predict(self, image_rgb: np.ndarray) -> dict[str, Any]:
-        e = extraer(self.seg, image_rgb)
+        e = extraer(self.seg, image_rgb, self.balance)
         base = {"fraccion_conjuntiva": e["fraccion_conjuntiva"], "model": self.nombre,
                 "aviso": "Tamizaje de investigación: la anemia solo se confirma con un análisis de sangre "
                          "(hemoglobina)."}
@@ -169,7 +171,7 @@ class AnalizadorAnemia:
         x = np.array([[e["medidas"][k] for k in CARACTERISTICAS]])
         p = float(self.clf.predict_proba(x)[0, 1])
         bajo, alto = self.zona
-        sin_ref = e["pixeles_blanco"] < 150
+        sin_ref = self.balance and e["pixeles_blanco"] < 150
         if p >= alto:
             resultado, titulo, desc = "palidez", "Conjuntiva pálida: posible anemia", (
                 "El interior del párpado se ve más pálido de lo normal. Conviene hacer una biometría "
