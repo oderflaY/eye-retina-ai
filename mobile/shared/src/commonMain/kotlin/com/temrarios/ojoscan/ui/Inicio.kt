@@ -265,7 +265,7 @@ private fun TarjetaCompleto(activo: Boolean, alPulsar: () -> Unit) {
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
             Text("RECOMENDADO", style = Hud.etiqueta.copy(fontSize = 8.sp, color = if (activo) Colores.bien else Colores.textoSuave))
             Text("Chequeo completo", color = if (activo) Colores.texto else Colores.textoSuave, fontWeight = FontWeight.Bold, fontSize = 18.sp)
-            Text("Tus datos + ojos + anemia + rostro + encía → tu perfil médico", color = Colores.textoSuave, fontSize = 11.sp, lineHeight = 14.sp)
+            Text("Tus datos + ojos + anemia + rostro + encía + palma → tu perfil médico", color = Colores.textoSuave, fontSize = 11.sp, lineHeight = 14.sp)
         }
         Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
             for (m in Modo.entries) Icon(m.icono(), null, tint = if (activo) Colores.cian else Colores.textoSuave, modifier = Modifier.size(18.dp))

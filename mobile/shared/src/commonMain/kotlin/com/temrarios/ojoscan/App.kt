@@ -66,6 +66,7 @@ val PASOS_COMPLETOS = listOf(
     Paso(Modo.ANEMIA, Ojo.IZQUIERDO),
     Paso(Modo.ROSTRO, Ojo.AMBOS),
     Paso(Modo.ENCIA, Ojo.AMBOS),
+    Paso(Modo.PALMA, Ojo.AMBOS),
 )
 
 fun Ajustes.pasos(): List<Paso> = if (completo) PASOS_COMPLETOS else listOf(Paso(modo, ojo))

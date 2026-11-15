@@ -1,5 +1,6 @@
 package com.temrarios.ojoscan.ui
 
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
@@ -131,7 +132,8 @@ fun PantallaResultado(
                 else -> "REPORTE // ANÁLISIS OCULAR"
             }, style = Hud.etiqueta)
             TextoDegradado(if (completo) "Pronóstico" else "Resultados", 34)
-            if (perfil != null) PanelPerfil(perfil, perfilRes, Modifier.fillMaxWidth())
+            var verDetalle by remember(mediciones) { mutableStateOf(false) }
+            if (perfil != null && !completo) PanelPerfil(perfil, perfilRes, Modifier.fillMaxWidth())
             if (piezas.isEmpty() && perfil == null) {
                 PanelVidrio(Modifier.fillMaxWidth()) {
                     Text("No se completó ninguna medición.", color = Colores.atencion, fontSize = 16.sp)
@@ -146,9 +148,13 @@ fun PantallaResultado(
                         else -> r.copy(fallidas = r.fallidas + "Tus datos (${explicar(pf.exceptionOrNull()!!).take(60)})")
                     }
                 }), Modifier.fillMaxWidth())
-                TituloHud("≡", "Detalle de cada medición")
+                if (listos >= total) BotonContorno(if (verDetalle) "Ocultar detalle" else "Ver detalle de cada prueba",
+                    { verDetalle = !verDetalle }, Modifier.fillMaxWidth())
             }
-            for ((i, p) in piezas.withIndex()) TarjetaOjo(p.modo, p.r, envios[i])
+            if (!completo || verDetalle) {
+                if (completo && perfil != null) PanelPerfil(perfil, perfilRes, Modifier.fillMaxWidth())
+                for ((i, p) in piezas.withIndex()) TarjetaOjo(p.modo, p.r, envios[i])
+            }
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 BotonContorno("Inicio", alInicio, Modifier.weight(1f))
                 BotonNeon(if (completo) "Repetir chequeo" else "Re-escanear", alRepetir, Modifier.weight(1.3f))
@@ -250,7 +256,8 @@ private fun PanelPerfil(d: DatosPerfil, res: Result<AnalisisPerfil>?, modifier: 
                             if (i.fuente.isNotBlank()) Text(i.fuente, style = Hud.dato.copy(fontSize = 8.sp, color = Colores.textoSuave))
                         }
                         Spacer(Modifier.size(8.dp))
-                        Text(i.valor, color = c, fontWeight = FontWeight.Black, fontSize = 15.sp)
+                        Text(i.valor, color = c, fontWeight = FontWeight.Black, fontSize = 15.sp, lineHeight = 18.sp,
+                            textAlign = TextAlign.End, modifier = Modifier.widthIn(max = 120.dp))
                     }
                 }
                 if (a.faltan.isNotEmpty()) Text("Para completarlo falta: " + a.faltan.joinToString(", ") + ".",
