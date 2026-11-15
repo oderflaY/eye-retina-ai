@@ -68,13 +68,17 @@ class AstroTest {
     fun ppgEncuentraElPulso() {
         val e = EstimadorPpg()
         var t = 0L
-        // 72 lpm = 1.2 Hz, 30 fps, el rojo BAJA con cada latido
+        // 72 lpm, 30 fps; onda con forma de pulso (subida rápida, muesca dicrótica) y ruido. El rojo BAJA con cada latido.
+        val periodo = 60.0 / 72
+        val rnd = kotlin.random.Random(3)
         repeat(30 * 12) { i ->
-            e.agregar(t, 200 - 3 * sin(2 * PI * 1.2 * i / 30.0)); t += 33
+            val fase = (i / 30.0) % periodo / periodo
+            val onda = kotlin.math.exp(-((fase - 0.15) / 0.07).let { it * it }) + 0.4 * kotlin.math.exp(-((fase - 0.45) / 0.1).let { it * it })
+            e.agregar(t, 200 - 3 * onda + 0.15 * (rnd.nextDouble() - 0.5)); t += 33
         }
         val l = e.estimar(t)!!
-        assertTrue(l.lpm in 68..76, "lpm ${l.lpm}")
-        assertTrue(l.calidad > 0.7)
+        assertTrue(l.lpm in 69..75, "lpm ${l.lpm}")
+        assertTrue(l.calidad >= 0.5, "calidad ${l.calidad}")
     }
 
     @Test

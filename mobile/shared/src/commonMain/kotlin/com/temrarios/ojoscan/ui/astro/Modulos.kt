@@ -113,7 +113,7 @@ fun PanelPpg(motor: AstroPulseEngine, alIaCardiaca: () -> Unit, alEscaneos: () -
     var dedo by remember { mutableStateOf(false) }
     var senal by remember { mutableStateOf(emptyList<Double>()) }
     val tm by motor.estado.collectAsState()
-    Text("Pon la yema del dedo índice cubriendo la cámara trasera y el flash. Quédate quieto 15 segundos.",
+    Text("Pon la yema del dedo índice cubriendo la cámara trasera y el flash. Quédate quieto: la primera lectura sale a los 10 s y se revisa cada segundo.",
         color = Cabina.suave, fontSize = 13.sp, lineHeight = 18.sp)
     if (midiendo) {
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -141,7 +141,7 @@ fun PanelPpg(motor: AstroPulseEngine, alIaCardiaca: () -> Unit, alEscaneos: () -
                     if (l.calidad >= 0.5) Cabina.verde else Cabina.ambar)
             }
             Text(if (l.calidad >= 0.5) "Lectura válida: actualiza el pulso de la misión." else
-                "Calidad baja: no muevas el dedo ni lo aprietes demasiado.", color = Cabina.suave, fontSize = 11.sp)
+                "Calidad baja: sigue midiendo sin mover el dedo ni apretarlo; el pulso se actualiza solo cuando la señal es confiable.", color = Cabina.suave, fontSize = 11.sp)
         }
     }
     Etiqueta("Más biometría")

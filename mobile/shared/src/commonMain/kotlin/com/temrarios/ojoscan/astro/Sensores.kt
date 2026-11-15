@@ -93,8 +93,8 @@ class MotorPvt(private val azar: () -> Double = { kotlin.random.Random.nextDoubl
 
 /**
  * Pulso por fotopletismografía con la cámara: dedo sobre el lente con el flash encendido.
- * Recibe el promedio del canal rojo de cada cuadro; filtra, busca picos y calcula lpm, índice de perfusión
- * (componente pulsátil / continua) y calidad (regularidad de los intervalos).
+ * Recibe el promedio del canal rojo de cada cuadro; re-muestrea a 30 Hz y usa [ModeloPpg] (BUT PPG):
+ * pulso por espectro + picos con prominencia y calidad por regresión logística (13 rasgos).
  */
 class EstimadorPpg(private val ventanaMs: Long = 12_000) {
     private val t = ArrayDeque<Long>()
@@ -109,41 +109,28 @@ class EstimadorPpg(private val ventanaMs: Long = 12_000) {
         while (t.isNotEmpty() && horaMs - t.first() > ventanaMs) { t.removeFirst(); v.removeFirst() }
     }
 
-    fun limpiar() { t.clear(); v.clear() }
+    fun limpiar() { t.clear(); v.clear(); ultimoMs = Long.MIN_VALUE }
+
+    /** Último análisis completo (rasgos y probabilidad), para depurar o mostrar. */
+    var ultimo: ModeloPpg.Analisis? = null
+        private set
+
+    /**
+     * Pulso + calidad con el modelo entrenado en BUT PPG (ver [ModeloPpg]). Necesita 10 s de señal.
+     * calidad ≥ 0.5 = el modelo cree que el pulso está a ±5 lpm del real; si no, hay que seguir midiendo.
+     */
+    private var ultimoMs = Long.MIN_VALUE
 
     fun estimar(horaMs: Long): LecturaPpg? {
-        if (v.size < 60 || t.last() - t.first() < 6000) return null
-        val x = v.toList()
-        val tt = t.toList()
-        // quitar tendencia con media móvil de ~1 s y suavizar con 3 puntos
-        val fps = x.size * 1000.0 / (tt.last() - tt.first())
-        val k = (fps).toInt().coerceAtLeast(3)
-        val sinTend = x.indices.map { i ->
-            val a = (i - k / 2).coerceAtLeast(0); val b = (i + k / 2).coerceAtMost(x.size - 1)
-            x[i] - x.subList(a, b + 1).average()
-        }
-        val s = sinTend.indices.map { i -> sinTend.subList((i - 1).coerceAtLeast(0), (i + 2).coerceAtMost(x.size)).average() }
-        // en PPG por reflexión la sangre ABSORBE: el latido es un valle del rojo → se invierte
-        val y = s.map { -it }
-        val amp = y.maxOrNull()!! - y.minOrNull()!!
-        if (amp <= 0) return null
-        val minDist = (fps * 0.33).toInt().coerceAtLeast(2) // ≤ 180 lpm
-        val picos = mutableListOf<Int>()
-        for (i in 1 until y.size - 1) {
-            if (y[i] > y[i - 1] && y[i] >= y[i + 1] && y[i] > amp * 0.15) {
-                if (picos.isEmpty() || i - picos.last() >= minDist) picos += i
-                else if (y[i] > y[picos.last()]) picos[picos.size - 1] = i
-            }
-        }
-        if (picos.size < 4) return null
-        val intervalos = picos.zipWithNext { a, b -> (tt[b] - tt[a]).toDouble() }.filter { it in 330.0..1500.0 }
-        if (intervalos.size < 3) return null
-        val med = intervalos.sorted()[intervalos.size / 2]
-        val dispersion = intervalos.map { abs(it - med) / med }.average()
-        val lpm = (60_000 / med).roundToInt()
+        // se llama en cada cuadro de la cámara: analizar como máximo 1 vez por segundo
+        if (ultimoMs != Long.MIN_VALUE && horaMs - ultimoMs < 1_000) return null
+        val x = ModeloPpg.remuestrear(t.toList(), v.toList()) ?: return null
+        if (x.max() - x.min() <= 0) return null
+        ultimoMs = horaMs
+        val a = ModeloPpg.analizar(x)
+        ultimo = a
         val dc = x.average()
         val perfusion = if (dc > 0) (x.max() - x.min()) / dc * 100 else 0.0
-        val calidad = (1 - dispersion * 4).coerceIn(0.0, 1.0)
-        return LecturaPpg(lpm, (perfusion * 100).roundToInt() / 100.0, (calidad * 100).roundToInt() / 100.0, horaMs)
+        return LecturaPpg(a.hr.roundToInt(), (perfusion * 100).roundToInt() / 100.0, (a.calidad * 100).roundToInt() / 100.0, horaMs)
     }
 }
